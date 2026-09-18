@@ -13,6 +13,7 @@ import {
   initialProfile,
   initialPacients,
   initialStock,
+  registrarPaciente,
 } from './components/storageFuncs';
 import Splash from './Routes/splashScreen';
 import AppCycle from './Routes/appCycle';
@@ -351,7 +352,21 @@ export default function App() {
   // PacientF só coleta uma única lista de "restrições alimentares" (não
   // separa alergia de intolerância), então ao salvar ela substitui as
   // alergias e preserva as intolerâncias como estavam.
-  const savePacient = (output) => {
+  const savePacient = async (output) => {
+      console.log('1 - savePacient recebeu:', output);
+    const resultado = await registrarPaciente({
+      name: output.name,
+      doencas: output.conditions,
+      restrictions: output.restrictions,
+      birthDate: output.age,
+    })
+      console.log('2 - resultado do Supabase:', resultado);
+    if (!resultado){
+      return
+    }
+      console.log('4 - Cadastro aprovado, atualizando estado');
+
+
     const conditions = output.conditions
       ? output.conditions
           .split(',')
