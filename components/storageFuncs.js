@@ -99,6 +99,27 @@ export async function registrarUsuario(novoUsuario) {
   return usuarioComId;
 }
 
+// cadastrar pacientes
+
+export async function registrarPaciente(paciente) {
+
+  console.log('Paciente enviado para Supabase:', paciente);
+
+  const { error } = await supabase
+    .from('Pacientes')
+    .insert({
+      Nome_paciente: paciente.name,
+      Condicoes_Cronicas: paciente.doencas,
+      Restricoes_Alimentares: paciente.restrictions,
+      Data_Nascimento: paciente.birthDate || null
+    })
+
+if (error) {
+  console.error("Erro: ", error)
+  return false
+}
+return true;
+}
 // ---- Login ----
 // Autentica no supabase.auth e lê name/phone direto do user_metadata
 // (sem consultar nenhuma tabela). Se der certo, já salva o resultado
