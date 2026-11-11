@@ -181,7 +181,7 @@ export default function App() {
       {
         name: output.name,
         desc: output.desc,
-        time: output.time || 'WIP',
+        time: output.time || new Date().toLocaleString([],{hour: '2-digit', minute:'2-digit'}),
         date: formData?.date ?? todayBR(),
         completed: formData?.completed ?? false,
         type: formData?.type ?? 'task',
@@ -353,19 +353,18 @@ export default function App() {
   // separa alergia de intolerância), então ao salvar ela substitui as
   // alergias e preserva as intolerâncias como estavam.
   const savePacient = async (output) => {
-      console.log('1 - savePacient recebeu:', output);
+    console.log('1 - savePacient recebeu:', output);
     const resultado = await registrarPaciente({
       name: output.name,
       doencas: output.conditions,
       restrictions: output.restrictions,
       birthDate: output.age,
-    })
-      console.log('2 - resultado do Supabase:', resultado);
-    if (!resultado){
-      return
+    });
+    console.log('2 - resultado do Supabase:', resultado);
+    if (!resultado) {
+      return;
     }
-      console.log('4 - Cadastro aprovado, atualizando estado');
-
+    console.log('4 - Cadastro aprovado, atualizando estado');
 
     const conditions = output.conditions
       ? output.conditions
@@ -491,15 +490,7 @@ export default function App() {
   return (
     <NavigationContainer ref={navigationRef}>
       <View style={{ flex: 1 }}>
-        {splashscreen && (
-          <>
-            <Splash
-              state={splashscreen}
-              handler={setSplashscreen}
-              onAuthenticated={handleAuthenticated}
-            />
-          </>
-        )}
+        
         {isLoggedIn ? (
           <>
             <AppCycle
@@ -522,7 +513,7 @@ export default function App() {
                 initialData={formData}
               />
             )}
-            {!splashscreen && (
+            {(
               <>
                 <TopMenu
                   prototypeHeight={prototypeHeight}
@@ -539,6 +530,15 @@ export default function App() {
           </>
         ) : (
           <LoginCycle onAuthenticated={handleAuthenticated} />
+        )}
+        {splashscreen && (
+          <>
+            <Splash
+              state={splashscreen}
+              handler={setSplashscreen}
+              onAuthenticated={handleAuthenticated}
+            />
+          </>
         )}
       </View>
     </NavigationContainer>

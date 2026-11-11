@@ -64,17 +64,14 @@ useEffect(() => {
         })
       }
     ],},{height : prototypeHeight / 14, maxWidth:prototypeWidth / 1.08, padding:prototypeWidth / 20, gap:prototypeWidth / 20 }]}>
-    <TouchableOpacity >
-    <FontAwesome name={"file-text"} size={prototypeHeight / 35} color='#000' style={{}}/>
+    <TouchableOpacity disabled={route === "stock"} onPress={() => navigation.navigate('stock')}>
+    <FontAwesome5 name={"clipboard-list"} size={prototypeHeight / 35} color={route === "stock"? '#999':'#000'} style={{}}/>
     </TouchableOpacity>
-    <TouchableOpacity >
-    <FontAwesome name={"bluetooth-b"} size={prototypeHeight / 35} color='#000' style={{}}/>
-    </TouchableOpacity>
-    <TouchableOpacity >
-    <FontAwesome name={"cutlery"} size={prototypeHeight / 35} color='#000' style={{}}/>
+    <TouchableOpacity disabled={route === "diet"} onPress={() => navigation.navigate('diet')}>
+    <FontAwesome name={"cutlery"} size={prototypeHeight / 35} color={route === "diet"? '#999':'#000'} style={{}}/>
     </TouchableOpacity>
     <TouchableOpacity disabled={route === "reports"} onPress={() => navigation.navigate('reports')}>
-    <FontAwesome5 name={"clipboard-list"} size={prototypeHeight / 35} color={route === "reports"? '#999':'#000'} style={{}}/>
+    <FontAwesome name={"file-text"} size={prototypeHeight / 35} color={route === "reports"? '#999':'#000'} style={{}}/>
     </TouchableOpacity>
     <TouchableOpacity onPress={onLogout}>
     <FontAwesome name={"sign-out"} size={prototypeHeight / 35} color='#000' style={{}}/>

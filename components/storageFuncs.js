@@ -25,6 +25,31 @@ import { supabase } from './supabaseClient';
   existente (edição) ou virar um item novo (adição).
 */
 
+// ---- Helpers de conversão ----
+
+// O app usa 'dd/mm/yyyy', mas a coluna `date` do Postgres exige 'yyyy-mm-dd'.
+// Se já vier em ISO, devolve como está; se vazio ou inválido, devolve null.
+function toIsoDate(value) {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim());
+  if (!match) return null;
+
+  const [, dd, mm, yyyy] = match;
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Aceita array ou texto separado por vírgula e devolve sempre um array
+// limpo, pois as colunas são text[].
+function toArray(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === 'string') {
+    return value.split(',').map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
 // ---- Recuperação de senha ----
 
 export async function sendRecoveryCode(email) {
@@ -46,7 +71,7 @@ export async function getStoredUser() {
     const storedData = await AsyncStorage.getItem('user');
     return storedData ? JSON.parse(storedData) : null;
   } catch (error) {
-    console.error('Erro ao lêr os dados do usuário', error);
+    console.error('Erro ao ler os dados do usuário', error);
     return null;
   }
 }
@@ -99,27 +124,28 @@ export async function registrarUsuario(novoUsuario) {
   return usuarioComId;
 }
 
-// cadastrar pacientes
-
+// ---- Cadastrar paciente ----
+// Chama a função criar_paciente no Supabase, que insere o paciente e já
+// cria o vínculo em usuario_paciente com o usuário logado (auth.uid()).
+// Retorna o id_paciente criado, ou false em caso de erro.
 export async function registrarPaciente(paciente) {
-
   console.log('Paciente enviado para Supabase:', paciente);
 
-  const { error } = await supabase
-    .from('Pacientes')
-    .insert({
-      Nome_paciente: paciente.name,
-      Condicoes_Cronicas: paciente.doencas,
-      Restricoes_Alimentares: paciente.restrictions,
-      Data_Nascimento: paciente.birthDate || null
-    })
+  const { data, error } = await supabase.rpc('criar_paciente', {
+    p_nome: paciente.name,
+    p_nascimento: toIsoDate(paciente.birthDate),
+    p_condicoes: toArray(paciente.doencas),
+    p_restricoes: toArray(paciente.restrictions),
+  });
 
-if (error) {
-  console.error("Erro: ", error)
-  return false
+  if (error) {
+    console.error('Erro ao cadastrar paciente: ', error);
+    return false;
+  }
+
+  return data; // id_paciente (bigint)
 }
-return true;
-}
+
 // ---- Login ----
 // Autentica no supabase.auth e lê name/phone direto do user_metadata
 // (sem consultar nenhuma tabela). Se der certo, já salva o resultado
@@ -143,6 +169,7 @@ export async function loginUsuario(email, pword) {
     name: authUser.user_metadata?.name ?? '',
     phone: authUser.user_metadata?.phone ?? '',
     registered: authUser.created_at,
+    foto: userImg,
   };
 
   await setStoredUser(usuario);
@@ -164,7 +191,7 @@ export async function logoutUsuario() {
 // para cá para não inflar o App.js.
 
 export const userImg =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJoAAACUCAMAAABcK8BVAAAAP1BMVEX///+ZmZmVlZXa2tqSkpLT09P7+/uvr6+Pj4+cnJypqan4+Pijo6Ps7Ozo6Ojf39/ExMS2tra9vb3Nzc3y8vJNRIxZAAAFOElEQVR4nO1c6XLzKgyNMV4w3s37P+tnJ2kTL/hIgN17Zzg/OtNOQw+SQCt9PCIiIiIiIiIiIiIi/lfQpsv6oaieKIY+64zO/5rU49GmfaFkKaUQyRNCyPnbpOrT9k95jZUSP5zWmH+qqvFv2OVdn5SHrL74VmVKMlUZk1CTh8CtVzDBmYFhKCcQSpQmZ+ozM3RgAAAAAAAABMBWMU0AjRrKIuySG62aBkyYlPaz43CKKhJwEGB88AKzOAMzqfeOT5cl1peYmVVDLPSdGQqpVrJQ4zUUYKb2C2ucms5nmLSCPV88BMFNvWFzNPQVEp6rgvWEL26HOiX4ud8FeAkCg9p8Fna+tEFJwU3UElGO7Ze3ydsRtZfXH+eVAVnUltZYMbWvO6CdCsUr/V5LbYYsS/nzlQcuNRmqg0GgdqWtCbkBuRTuQI18K4lS1kM/ZStM/VBL+lHg3WsdjVeixtQyo6PTsSa2nHnUSD5UFumpZzYpqU3DdFSEfENUePAlbwkpBjfdQxUBoYhHPoPl5oqZHIAC1oFzssEgwXELWefumZc8nq/FbqWlZ3EgN6095YardBvo0n5G+W25s3y0ZHc27MxcynXjyU75i9mM160FbA3gHHouqVUHTq0lbdUBvwjeWC5dpjP+hS1gsLXfznCcJLs3bywqdZleOD5VqMxhx3EuL12a8IdlLJ+O16HY2CWsJ47qAj59wqMmpOM0ykEzVOCitx1HNWeHSu6Cg34EauWd46DR5zpelO2X8prO2E+MOB2CBfueIbskvF5v76yc19rdH54jVNur0llo+wKgQ41/hW1w5DNOsfEuzk3fn+XW1Fx93gvr4JldR99gU/H3m0xct0tKz1npZkXN3ee9sKqvS19q3wr1H6/7Vqk/tc/1EWDQtLmKWoBB+i+fID3Hy82HGrOoZsFnGktMqRc+TtR/sO4J/WVuwg8fQws0NUyozfAgqmAPDxoZdprZ12ZX3IJWdplNKYCW1Qk4h+8VtOOGR21pEGFltgBPjNKYqQue3pgQ8/OMkiEH+Ujsvdoh+6ueUqV+ShXqwkePjY9SL34al2euL+OEyK5+UGhGVgPql9l4xxvRrmIfh7K66EXcnlzBkZwQxV3EHssb6YLakpVlcfdLadNX+ESIpOpve4f8Bd31qrSHS0Iuj3FCP9Cjw0xDrbYPqJZ4VtXDfe+2bdBNmo1Dpd5d7oXUmKXN34lrizzX2hijtc7/A//5ISIiIiIiIiIiIiKCi3/HUDjyBUAomQAAAABJRU5ErkJggg=='
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJoAAACUCAMAAABcK8BVAAAAP1BMVEX///+ZmZmVlZXa2tqSkpLT09P7+/uvr6+Pj4+cnJypqan4+Pijo6Ps7Ozo6Ojf39/ExMS2tra9vb3Nzc3y8vJNRIxZAAAFOElEQVR4nO1c6XLzKgyNMV4w3s37P+tnJ2kTL/hIgN17Zzg/OtNOQw+SQCt9PCIiIiIiIiIiIiIi/lfQpsv6oaieKIY+64zO/5rU49GmfaFkKaUQyRNCyPnbpOrT9k95jZUSP5zWmH+qqvFv2OVdn5SHrL74VmVKMlUZk1CTh8CtVzDBmYFhKCcQSpQmZ+ozM3RgAAAAAAAABMBWMU0AjRrKIuySG62aBkyYlPaz43CKKhJwEGB88AKzOAMzqfeOT5cl1peYmVVDLPSdGQqpVrJQ4zUUYKb2C2ucms5nmLSCPV88BMFNvWFzNPQVEp6rgvWEL26HOiX4ud8FeAkCg9p8Fna+tEFJwU3UElGO7Ze3ydsRtZfXH+eVAVnUltZYMbWvO6CdCsUr/V5LbYYsS/nzlQcuNRmqg0GgdqWtCbkBuRTuQI18K4lS1kM/ZStM/VBL+lHg3WsdjVeixtQyo6PTsSa2nHnUSD5UFumpZzYpqU3DdFSEfENUePAlbwkpBjfdQxUBoYhHPoPl5oqZHIAC1oFzssEgwXELWefumZc8nq/FbqWlZ3EgN6095YardBvo0n5G+W25s3y0ZHc27MxcynXjyU75i9mM160FbA3gHHouqVUHTq0lbdUBvwjeWC5dpjP+hS1gsLXfznCcJLs3bywqdZleOD5VqMxhx3EuL12a8IdlLJ+O16HY2CWsJ47qAj59wqMmpOM0ykEzVOCitx1HNWeHSu6Cg34EauWd46DR5zpelO2X8prO2E+MOB2CBfueIbskvF5v76yc19rdH54jVNur0llo+wKgQ41/hW1w5DNOsfEuzk3fn+XW1Fx93gvr4JldR99gU/H3m0xct0tKz1npZkXN3ee9sKqvS19q3wr1H6/7Vqk/tc/1EWDQtLmKWoBB+i+fID3Hy82HGrOoZsFnGktMqRc+TtR/sO4J/WVuwg8fQws0NUyozfAgqmAPDxoZdprZ12ZX3IJWdplNKYCW1Qk4h+8VtOOGR21pEGFltgBPjNKYqQue3pgQ8/OMkiEH+Ujsvdoh+6ueUqV+ShXqwkePjY9SL34al2euL+OEyK5+UGhGVgPql9l4xxvRrmIfh7K66EXcnlzBkZwQxV3EHssb6YLakpVlcfdLadNX+ESIpOpve4f8Bd31qrSHS0Iuj3FCP9Cjw0xDrbYPqJZ4VtXDfe+2bdBNmo1Dpd5d7oXUmKXN34lrizzX2hijtc7/A//5ISIiIiIiIiIiIiKCi3/HUDjyBUAomQAAAABJRU5ErkJggg==';
 
 // Placeholders para os campos de foto dos formulários (PacientF, MedicineF,
 // DeviceF, StockF), enquanto não há um seletor de imagem de verdade — um
