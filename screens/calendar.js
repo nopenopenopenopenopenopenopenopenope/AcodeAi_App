@@ -85,12 +85,13 @@ export default function Calendar({ paciente, func }) {
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      {paciente &&(
       <View style={styles.headerRow}>
         <Text style={styles.headerDate}>{formatHeaderDate(selectedDate)}</Text>
         <TouchableOpacity onPress={() => func?.('task')}>
           <Feather name="plus" size={26} color="#36A06F" />
         </TouchableOpacity>
-      </View>
+      </View>)}
       <TouchableOpacity onPress={() => setSelectedDate(today)}>
         <Text style={styles.todayLink}>Hoje</Text>
       </TouchableOpacity>

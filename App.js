@@ -8,12 +8,23 @@ import {
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import {
-  clearStoredUser,
+  logoutUsuario,
   userImg,
-  initialProfile,
-  initialPacients,
-  initialStock,
-  registrarPaciente,
+  fetchPacientes,
+  criarPaciente,
+  atualizarPaciente,
+  salvarPeso,
+  registrarBatimento,
+  conectarPaciente,
+  saveListItem,
+  setTarefaConcluida,
+  salvarMetasDieta,
+  registrarAgua,
+  salvarRestricoesDieta,
+  fetchEstoques,
+  saveProduto,
+  criarEstoque,
+  conectarEstoque,
 } from './components/storageFuncs';
 import Splash from './Routes/splashScreen';
 import AppCycle from './Routes/appCycle';
@@ -31,6 +42,7 @@ import ConnectStockF from './forms/connectStockForm';
 import ConnectPacientF from './forms/connectPacientForm';
 import WeightF from './forms/weightForm';
 import HeartRateF from './forms/heartRateForm';
+import DietF from './forms/dietForm';
 import { useState, useRef } from 'react';
 import TopMenu from './components/topMenu';
 import BottomMenu from './components/bottomMenu';
@@ -40,7 +52,30 @@ import BottomMenu from './components/bottomMenu';
   Concluir a splashscreen
   Mover o verificador inicial de auth para a splashscreen
 
+  Fonte da verdade agora é o Supabase: pacientes, listas do paciente e
+  estoque são carregados do banco (components/storageFuncs.js) depois do
+  login e, a cada gravação, o estado local só espelha o que o banco devolveu.
+  O `id` do paciente no app é o seu CÓDIGO de conexão — o mesmo que outro
+  usuário digita para se conectar; a tradução para o id_paciente do banco
+  acontece dentro do storageFuncs. Listas, produtos e estoque usam o uuid do
+  banco. Não existe mais generateId.
  */
+
+const PACIENTS_LIMIT = 3; // também imposto no banco (trigger limitar_pacientes)
+
+const emptyProfile = {
+  id: null,
+  pacientIds: [],
+  pacientsLimit: PACIENTS_LIMIT,
+  selectedPacient: null,
+  stockId: null,
+  name: '',
+  role: 'Cuidador',
+  email: '',
+  phone: '',
+  foto: userImg,
+};
+
 export default function App() {
   const prototypeHeight = Dimensions.get('window').height;
   const prototypeWidth = Dimensions.get('window').width;
@@ -51,43 +86,71 @@ export default function App() {
   // Handler para a splashscreen (Em Progresso)
   const [splashscreen, setSplashscreen] = useState(true);
 
-  // Usa os dados reais do usuário autenticado (id/nome/email/telefone —
-  // vindos do cadastro, que agora gera um id de verdade) em vez de
-  // ignorá-los. Todo usuário começa sem pacientes e sem estoque — quem
-  // quiser os dados de demonstração (pacientes/estoque do mock) pode
-  // criar seus próprios pacientes pelo formulário, ou entrar no estoque
-  // de demonstração digitando o id 'estoque1' em "Conectar a um estoque
-  // existente".
-  const handleAuthenticated = (usuario) => {
-    setProfile((prev) => ({
-      ...prev,
-      id: usuario?.id ?? prev.id,
-      name: usuario?.name ?? prev.name,
-      email: usuario?.email ?? prev.email,
-      phone: usuario?.phone ?? prev.phone,
-      pacientIds: [],
-      selectedPacient: null,
-      stockId: null,
-    }));
-    setIsLoggedIn(true);
-  };
-
-  const handleLogout = () => {
-    clearStoredUser().catch((error) =>
-      console.error('Erro ao remover usuário', error)
-    );
-    setIsLoggedIn(false);
-  };
-
-  const [profile, setProfile] = useState(initialProfile);
-
-  const [pacient, setPacient] = useState(initialPacients);
+  const [profile, setProfile] = useState(emptyProfile);
+  const [pacient, setPacient] = useState([]);
 
   // Estoque: um usuário só pode ter um estoque (profile.stockId), mas um
   // estoque pode ter vários usuários (stock.userIds).
-  const [stock, setStock] = useState(initialStock);
+  const [stock, setStock] = useState([]);
 
   const op = useRef(new Animated.Value(0)).current;
+
+  // ---- Carga de dados (banco -> estado) ----
+
+  // Recarrega todos os pacientes do usuário. `preferId` força a seleção
+  // (ex: paciente recém-criado); senão mantém a seleção atual se ainda
+  // existir, ou cai no primeiro da lista.
+  const loadPacientes = async (userId, preferId = null) => {
+    const list = await fetchPacientes(userId);
+    if (!list) return;
+    setPacient(list);
+    setProfile((prev) => {
+      const keep = list.some((p) => p.id === prev.selectedPacient)
+        ? prev.selectedPacient
+        : null;
+      return {
+        ...prev,
+        pacientIds: list.map((p) => p.id),
+        selectedPacient: preferId ?? keep ?? list[0]?.id ?? null,
+      };
+    });
+  };
+
+  const loadEstoques = async (userId) => {
+    const list = await fetchEstoques(userId);
+    if (!list) return;
+    setStock(list);
+    setProfile((prev) => ({ ...prev, stockId: list[0]?.id ?? null }));
+  };
+
+  // Usa os dados reais do usuário autenticado e carrega pacientes/estoque
+  // dele do banco. Quem não tem nada ainda começa com listas vazias.
+  const handleAuthenticated = async (usuario) => {
+    if (!usuario?.id) return;
+    setProfile({
+      ...emptyProfile,
+      id: usuario.id,
+      name: usuario.name ?? '',
+      email: usuario.email ?? '',
+      phone: usuario.phone ?? '',
+      foto: usuario.foto ?? userImg,
+    });
+    setPacient([]);
+    setStock([]);
+    setIsLoggedIn(true);
+    await Promise.all([loadPacientes(usuario.id), loadEstoques(usuario.id)]);
+  };
+
+  const handleLogout = () => {
+    // encerra a sessão do Supabase e limpa o 'user' do AsyncStorage
+    logoutUsuario().catch((error) =>
+      console.error('Erro ao encerrar sessão', error)
+    );
+    setIsLoggedIn(false);
+    setProfile(emptyProfile);
+    setPacient([]);
+    setStock([]);
+  };
 
   // `data` is optional: pass the existing object being edited (e.g. a
   // specific medicine, a stock product) so the form opens pre-filled;
@@ -113,13 +176,20 @@ export default function App() {
     }).start();
   };
 
-  // Declaradas antes de `forms` abaixo, já que `forms` as referencia —
-  // `const` depois de `forms` daria erro (temporal dead zone).
-
-  const generateId = (prefix) =>
-    `${prefix}_${Date.now().toString(36)}_${Math.floor(
-      Math.random() * 1e4
-    ).toString(36)}`;
+  // Evita gravação dupla (toque duplo no botão enquanto a requisição
+  // anterior ainda está em andamento).
+  const saving = useRef(false);
+  const guarded =
+    (fn) =>
+    async (...args) => {
+      if (saving.current) return;
+      saving.current = true;
+      try {
+        return await fn(...args);
+      } finally {
+        saving.current = false;
+      }
+    };
 
   const todayBR = () => {
     const d = new Date();
@@ -128,44 +198,42 @@ export default function App() {
     ).padStart(2, '0')}/${d.getFullYear()}`;
   };
 
-  const emptyDiet = () => ({
-    calories: { current: 0, goal: 0 },
-    macros: {
-      carbs: { current: 0, goal: 0 },
-      protein: { current: 0, goal: 0 },
-      lipids: { current: 0, goal: 0 },
-    },
-    water: { current: 0, goal: 0 },
-    restrictions: { allergies: [], intolerances: [] },
-  });
+  const requireSelectedPacient = () => {
+    if (!profile.selectedPacient) {
+      alert('Nenhum paciente selecionado');
+      return null;
+    }
+    return profile.selectedPacient;
+  };
 
-  // Adiciona `entry` a `pacient[selectedPacient][field]`, ou — se `entry.id`
-  // já existe na lista — substitui o item existente por ele (edição).
-  // `formData` (o initialData passado a openForm) é quem carrega o id
-  // quando estamos editando um item já existente.
-  const upsertPacientListItem = (field, entry, idPrefix) => {
-    const id = formData?.id ?? entry.id ?? generateId(idPrefix);
-    const finalEntry = { ...entry, id };
+  // Grava `entry` no banco (insert, ou update se estamos editando — o id
+  // vem de formData) e espelha o item devolvido em pacient[...][field].
+  // Se falhar, o form continua aberto (saveListItem já mostrou o erro).
+  const upsertPacientListItem = async (field, entry) => {
+    const pacienteId = requireSelectedPacient();
+    if (!pacienteId) return;
+
+    const saved = await saveListItem(field, pacienteId, entry, formData?.id ?? null);
+    if (!saved) return;
 
     setPacient((prev) =>
       prev.map((p) => {
-        if (p.id !== profile.selectedPacient) return p;
+        if (p.id !== pacienteId) return p;
         const list = p[field] ?? [];
-        const exists = list.some((item) => item.id === id);
+        const exists = list.some((item) => item.id === saved.id);
         return {
           ...p,
           [field]: exists
-            ? list.map((item) => (item.id === id ? finalEntry : item))
-            : [...list, finalEntry],
+            ? list.map((item) => (item.id === saved.id ? saved : item))
+            : [...list, saved],
         };
       })
     );
     closeForm();
   };
 
-  // Pra campos que não são listas (weight, heartRate, ...) — só mescla
-  // `patch` no paciente selecionado, em vez de empurrar/editar um item
-  // dentro de uma lista como upsertPacientListItem faz.
+  // Pra campos que não são listas (weight, ...) — só mescla `patch` no
+  // paciente selecionado.
   const updateSelectedPacient = (patch) => {
     setPacient((prev) =>
       prev.map((p) =>
@@ -175,310 +243,278 @@ export default function App() {
     closeForm();
   };
 
-  const saveTask = (output) => {
-    upsertPacientListItem(
-      'schedule',
-      {
-        name: output.name,
-        desc: output.desc,
-        time: output.time || new Date().toLocaleString([],{hour: '2-digit', minute:'2-digit'}),
-        date: formData?.date ?? todayBR(),
-        completed: formData?.completed ?? false,
-        type: formData?.type ?? 'task',
-      },
-      'task'
+  const saveTask = (output) =>
+    upsertPacientListItem('schedule', {
+      name: output.name,
+      desc: output.desc,
+      time:
+        output.time ||
+        new Date().toLocaleString([], { hour: '2-digit', minute: '2-digit' }),
+      date: formData?.date ?? todayBR(),
+      completed: formData?.completed ?? false,
+      type: formData?.type ?? 'task',
+      // só vão se o form de tarefa/evento os preencher; ausentes = não altera
+      professional: output.professional,
+      place: output.place,
+      address: output.address,
+    });
+
+  const saveReport = (output) =>
+    upsertPacientListItem('reports', {
+      title: output.title,
+      date: output.date || todayBR(),
+      body: output.body,
+      notes: output.notes,
+    });
+
+  const saveCheckin = (output) =>
+    upsertPacientListItem('checkins', {
+      feeling: output.feeling,
+      sleep: output.sleep,
+      moodChange: output.moodChange,
+      notes: output.notes,
+      date: output.date || todayBR(),
+    });
+
+  const saveLaudo = (output) =>
+    upsertPacientListItem('laudos', {
+      name: output.name,
+      date: output.date || todayBR(),
+      doctor: output.doctor,
+      file: output.file,
+    });
+
+  const saveMedicine = (output) =>
+    upsertPacientListItem('medicines', {
+      name: output.name,
+      start: output.start || todayBR(),
+      treatment: output.treatment,
+      frequency: output.frequency,
+    });
+
+  // Marca/desmarca uma tarefa como concluída (grava no banco).
+  // Ligue isto ao checkbox da tela de agenda via a prop onToggleTask.
+  const toggleTask = async (taskId) => {
+    const pacienteId = profile.selectedPacient;
+    const task = pacient
+      .find((p) => p.id === pacienteId)
+      ?.schedule?.find((t) => t.id === taskId);
+    if (!task) return;
+
+    const concluida = !task.completed;
+    const ok = await setTarefaConcluida(taskId, concluida);
+    if (!ok) return;
+
+    setPacient((prev) =>
+      prev.map((p) =>
+        p.id !== pacienteId
+          ? p
+          : {
+              ...p,
+              schedule: p.schedule.map((t) =>
+                t.id === taskId ? { ...t, completed: concluida } : t
+              ),
+            }
+      )
     );
   };
 
-  const saveReport = (output) => {
-    upsertPacientListItem(
-      'reports',
-      {
-        title: output.title,
-        date: output.date || todayBR(),
-        body: output.body,
-        notes: output.notes,
-      },
-      'report'
-    );
-  };
-
-  const saveCheckin = (output) => {
-    upsertPacientListItem(
-      'checkins',
-      {
-        feeling: output.feeling,
-        sleep: output.sleep,
-        moodChange: output.moodChange,
-        notes: output.notes,
-        date: output.date || todayBR(),
-      },
-      'checkin'
-    );
-  };
-
-  const saveLaudo = (output) => {
-    upsertPacientListItem(
-      'laudos',
-      {
-        name: output.name,
-        date: output.date || todayBR(),
-        doctor: output.doctor,
-        file: output.file,
-      },
-      'laudo'
-    );
-  };
-
-  const saveMedicine = (output) => {
-    upsertPacientListItem(
-      'medicines',
-      {
-        name: output.name,
-        start: output.start || todayBR(),
-        treatment: output.treatment,
-        frequency: output.frequency,
-        foto: output.foto || null,
-      },
-      'medicine'
-    );
-  };
   // Estoque: um usuário só tem um estoque (profile.stockId), então o
   // produto sempre é adicionado/editado dentro desse estoque.
-  const saveStockProduct = (output) => {
-    const id = formData?.id ?? generateId('product');
-    const finalEntry = {
-      name: output.name,
-      quantity: output.quantity,
-      lastAcquisition: output.lastAcquisition || todayBR(),
-      items: output.items ?? [],
-      foto: output.foto || null,
-      id,
-    };
+  const saveStockProduct = async (output) => {
+    if (!profile.stockId) {
+      alert('Conecte-se a um estoque primeiro.');
+      return;
+    }
+
+    const saved = await saveProduto(
+      profile.stockId,
+      {
+        name: output.name,
+        quantity: output.quantity,
+        lastAcquisition: output.lastAcquisition || todayBR(),
+      },
+      formData?.id ?? null
+    );
+    if (!saved) return;
 
     setStock((prev) =>
       prev.map((s) => {
         if (s.id !== profile.stockId) return s;
         const list = s.products ?? [];
-        const exists = list.some((p) => p.id === id);
+        const exists = list.some((p) => p.id === saved.id);
         return {
           ...s,
           products: exists
-            ? list.map((p) => (p.id === id ? finalEntry : p))
-            : [...list, finalEntry],
+            ? list.map((p) => (p.id === saved.id ? saved : p))
+            : [...list, saved],
         };
       })
     );
     closeForm();
   };
 
-  // Cria um estoque novo, vazio, e já conecta o usuário atual a ele.
-  // Diferente de connectToStock, esta sempre funciona — então segue o
-  // mesmo padrão dos outros forms e fecha sozinha.
-  const createStock = (output) => {
-    const id = generateId('estoque');
-    const newStock = {
-      id,
-      name: output?.name || '',
-      userIds: profile.id ? [profile.id] : [],
-      products: [],
-    };
-    setStock((prev) => [...prev, newStock]);
-    setProfile((prev) => ({ ...prev, stockId: id }));
+  // Cria um estoque novo no banco, vazio, já conectado ao usuário atual.
+  const createStock = async (output) => {
+    const id = await criarEstoque(output?.name);
+    if (!id) return;
+    await loadEstoques(profile.id);
     closeForm();
   };
 
-  // Conecta o usuário atual a um estoque já existente, pelo id dele —
-  // o equivalente, por enquanto, a um "código de convite". Um estoque
-  // pode ter vários usuários, então isso só adiciona o usuário atual à
-  // lista de usuários do estoque, sem tirar ninguém.
-  // Diferente dos outros `output`, este NÃO fecha o form sozinho — quem
-  // chama (ConnectStockF) decide, com base no { success, error }
-  // retornado, se fecha (sucesso) ou mostra o erro e continua aberto.
-  const connectToStock = (output) => {
-    const trimmed = String(output?.stockId ?? '').trim();
-    if (!trimmed)
-      return { success: false, error: 'Informe o código do estoque' };
+  // Conecta o usuário atual a um estoque existente pelo CÓDIGO dele
+  // (estoque.codigo). NÃO fecha o form sozinho — ConnectStockF decide com
+  // base no { success, error }. Agora é async: o form precisa dar `await`.
+  const connectToStock = async (output) => {
+    const code = String(output?.stockId ?? '').trim();
+    if (!code) return { success: false, error: 'Informe o código do estoque' };
 
-    const exists = stock.some((s) => s.id === trimmed);
-    if (!exists) return { success: false, error: 'Estoque não encontrado' };
+    const result = await conectarEstoque(code);
+    if (!result.success) return result;
 
-    setStock((prev) =>
-      prev.map((s) => {
-        if (s.id !== trimmed) return s;
-        if (!profile.id || (s.userIds ?? []).includes(profile.id)) return s;
-        return { ...s, userIds: [...(s.userIds ?? []), profile.id] };
-      })
-    );
-    setProfile((prev) => ({ ...prev, stockId: trimmed }));
+    await loadEstoques(profile.id);
     return { success: true };
   };
 
-  // Conecta o usuário atual a um paciente já existente, pelo id dele —
-  // não precisa mexer no paciente em si (ao contrário do estoque, ele
-  // não guarda uma lista de usuários conectados): basta acrescentar o id
-  // em profile.pacientIds, respeitando o mesmo limite (pacientsLimit) e
-  // a mesma regra de "não duplicar" usados por savePacient/handleAddPacient.
-  // Assim como connectToStock, NÃO fecha o form sozinho.
-  const connectToPacient = (output) => {
-    const trimmed = String(output?.pacientId ?? '').trim();
-    if (!trimmed)
-      return { success: false, error: 'Informe o código do paciente' };
-
-    const exists = pacient.some((p) => p.id === trimmed);
-    if (!exists) return { success: false, error: 'Paciente não encontrado' };
+  // Conecta o usuário atual a um paciente existente pelo CÓDIGO de convite
+  // (Pacientes.codigo) — o campo do form continua se chamando pacientId.
+  // Assim como connectToStock, NÃO fecha o form sozinho e é async.
+  const connectToPacient = async (output) => {
+    const code = String(output?.pacientId ?? '').trim();
+    if (!code) return { success: false, error: 'Informe o código do paciente' };
 
     const pacientIds = profile.pacientIds ?? [];
-    if (pacientIds.includes(trimmed)) {
-      return {
-        success: false,
-        error: 'Você já está conectado a este paciente',
-      };
-    }
-
-    const limit = profile.pacientsLimit ?? Infinity;
-    if (pacientIds.length >= limit) {
+    if (pacientIds.length >= (profile.pacientsLimit ?? Infinity)) {
       return { success: false, error: 'Limite de pacientes atingido' };
     }
 
-    setProfile((prev) => ({
-      ...prev,
-      pacientIds: [...(prev.pacientIds ?? []), trimmed],
-      selectedPacient: prev.selectedPacient ?? trimmed,
-    }));
+    const result = await conectarPaciente(code);
+    if (!result.success) return result;
+
+    if (pacientIds.includes(result.id)) {
+      return { success: false, error: 'Você já está conectado a este paciente' };
+    }
+
+    await loadPacientes(profile.id);
     return { success: true };
   };
 
-  // PacientF só coleta uma única lista de "restrições alimentares" (não
-  // separa alergia de intolerância), então ao salvar ela substitui as
-  // alergias e preserva as intolerâncias como estavam.
+  // Cria (RPC criar_paciente) ou edita (update) no banco e recarrega os
+  // pacientes, de modo que o id do app é sempre o id_paciente do banco.
+  // PacientF só coleta uma lista de "restrições alimentares" (alergias):
+  // ela vai para Pacientes.Restricoes_Alimentares.
   const savePacient = async (output) => {
-    console.log('1 - savePacient recebeu:', output);
-    const resultado = await registrarPaciente({
-      name: output.name,
-      doencas: output.conditions,
-      restrictions: output.restrictions,
-      birthDate: output.age,
-    });
-    console.log('2 - resultado do Supabase:', resultado);
-    if (!resultado) {
+    if (!output?.name?.trim()) {
+      alert('Informe o nome do paciente.');
       return;
     }
-    console.log('4 - Cadastro aprovado, atualizando estado');
-
-    const conditions = output.conditions
-      ? output.conditions
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-    const restrictions = output.restrictions
-      ? output.restrictions
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
 
     if (formData?.id) {
-      setPacient((prev) =>
-        prev.map((p) =>
-          p.id === formData.id
-            ? {
-                ...p,
-                name: output.name || p.name,
-                birthDate: output.age || p.birthDate,
-                conditions: conditions.length ? conditions : p.conditions,
-                bloodType: output.bloodType || p.bloodType,
-                foto: output.foto || p.foto,
-                diet: {
-                  ...(p.diet ?? emptyDiet()),
-                  restrictions: {
-                    allergies: restrictions,
-                    intolerances: p.diet?.restrictions?.intolerances ?? [],
-                  },
-                },
-              }
-            : p
-        )
-      );
+      const ok = await atualizarPaciente(formData.id, output);
+      if (!ok) return;
+      await loadPacientes(profile.id);
     } else {
-      const id = generateId('pacient');
-      const newPacient = {
-        id,
-        name: output.name,
-        birthDate: output.age,
-        foto: output.foto || null,
-        conditions,
-        emergencyContacts: [],
-        heartRate: { current: 0, history: [] },
-        bloodType: output.bloodType || '',
-        weight: '',
-        medicines: [],
-        laudos: [],
-        schedule: [],
-        reports: [],
-        checkins: [],
-        diet: restrictions.length
-          ? {
-              ...emptyDiet(),
-              restrictions: { allergies: restrictions, intolerances: [] },
-            }
-          : null,
-      };
-      setPacient((prev) => [...prev, newPacient]);
-      setProfile((prev) => ({
-        ...prev,
-        pacientIds: [...(prev.pacientIds ?? []), id],
-        selectedPacient: prev.selectedPacient ?? id,
-      }));
+      if ((profile.pacientIds ?? []).length >= (profile.pacientsLimit ?? Infinity)) {
+        alert('Limite de pacientes atingido');
+        return;
+      }
+      const novoId = await criarPaciente(output);
+      if (!novoId) return;
+      // mantém a seleção atual; se não havia nenhuma, seleciona o novo
+      await loadPacientes(profile.id, profile.selectedPacient ?? novoId);
     }
     closeForm();
   };
 
-  const saveWeight = (output) => {
-    updateSelectedPacient({ weight: output.weight });
+  const saveWeight = async (output) => {
+    const pacienteId = requireSelectedPacient();
+    if (!pacienteId) return;
+    const weight = await salvarPeso(pacienteId, output.weight);
+    if (!weight) return;
+    updateSelectedPacient({ weight });
   };
 
-  // Atualiza a leitura atual de bpm do paciente selecionado e acrescenta
-  // acompanhar. Ainda sem relação real com o relógio/horário do
-  const saveHeartRate = (output) => {
-    const currentHour24 = new Date().getHours();
-    const minutes = new Date().getMinutes();
+  // Registra a leitura de bpm no banco (batimentos) e acrescenta ao
+  // histórico do paciente selecionado.
+  const saveHeartRate = async (output) => {
     const bpm = Number(output.current);
-    if (!Number.isFinite(bpm)) {
-      closeForm();
+    if (!Number.isFinite(bpm) || bpm <= 0) {
+      alert('Informe um valor de batimentos válido.');
       return;
     }
+    const pacienteId = requireSelectedPacient();
+    if (!pacienteId) return;
+
+    const reading = await registrarBatimento(pacienteId, bpm);
+    if (!reading) return;
 
     setPacient((prev) =>
-      prev.map((p) => {
-        if (p.id !== profile.selectedPacient) return p;
-        const history = p.heartRate?.history ?? [];
-        return {
-          ...p,
-          heartRate: {
-            current: bpm,
-            history: [...history, { hour: `${currentHour24}:${minutes}`, bpm }],
-          },
-        };
-      })
+      prev.map((p) =>
+        p.id !== pacienteId
+          ? p
+          : {
+              ...p,
+              heartRate: {
+                current: reading.bpm,
+                history: [...(p.heartRate?.history ?? []), reading],
+              },
+            }
+      )
     );
+    closeForm();
+  };
+
+  // Grava a seção da dieta que o DietF abriu (output.section) e recarrega
+  // os pacientes, para o `diet` da tela vir sempre recalculado do banco.
+  const saveDiet = async (output) => {
+    const pacienteId = requireSelectedPacient();
+    if (!pacienteId) return;
+
+    const filled = (value) => String(value ?? '').trim() !== '';
+    let ok = null;
+
+    if (output.section === 'goals') {
+      ok = await salvarMetasDieta(pacienteId, {
+        calories: output.calories,
+        carbs: output.carbs,
+        protein: output.protein,
+        lipids: output.lipids,
+      });
+    } else if (output.section === 'water') {
+      // meta e/ou água consumida agora; os dois campos são opcionais
+      ok = true;
+      if (filled(output.water)) {
+        ok = await salvarMetasDieta(pacienteId, { water: output.water });
+      }
+      if (ok && filled(output.waterAdd)) {
+        ok = await registrarAgua(pacienteId, output.waterAdd);
+      }
+    } else if (output.section === 'restrictions') {
+      ok = await salvarRestricoesDieta(pacienteId, {
+        allergies: output.allergies,
+        intolerances: output.intolerances,
+      });
+    }
+
+    if (!ok) return;
+    await loadPacientes(profile.id);
     closeForm();
   };
 
   const forms = {
-    check: { component: CheckInF, output: saveCheckin },
-    laudo: { component: LaudoF, output: saveLaudo },
-    medicine: { component: MedicineF, output: saveMedicine },
-    pacient: { component: PacientF, output: savePacient },
-    stock: { component: StockF, output: saveStockProduct },
-    task: { component: TaskF, output: saveTask },
-    report: { component: ReportF, output: saveReport },
-    createStock: { component: CreateStockF, output: createStock },
+    check: { component: CheckInF, output: guarded(saveCheckin) },
+    laudo: { component: LaudoF, output: guarded(saveLaudo) },
+    medicine: { component: MedicineF, output: guarded(saveMedicine) },
+    pacient: { component: PacientF, output: guarded(savePacient) },
+    stock: { component: StockF, output: guarded(saveStockProduct) },
+    task: { component: TaskF, output: guarded(saveTask) },
+    report: { component: ReportF, output: guarded(saveReport) },
+    createStock: { component: CreateStockF, output: guarded(createStock) },
     connectStock: { component: ConnectStockF, output: connectToStock },
     connectPacient: { component: ConnectPacientF, output: connectToPacient },
-    weight: { component: WeightF, output: saveWeight },
-    heartRate: { component: HeartRateF, output: saveHeartRate },
+    weight: { component: WeightF, output: guarded(saveWeight) },
+    heartRate: { component: HeartRateF, output: guarded(saveHeartRate) },
+    diet: { component: DietF, output: guarded(saveDiet) },
   };
 
   const onSelectPacient = (id) => {
@@ -490,7 +526,6 @@ export default function App() {
   return (
     <NavigationContainer ref={navigationRef}>
       <View style={{ flex: 1 }}>
-        
         {isLoggedIn ? (
           <>
             <AppCycle
@@ -499,6 +534,7 @@ export default function App() {
               pacientstuff={pacient}
               stockstuff={stock}
               onSelectPacient={onSelectPacient}
+              onToggleTask={toggleTask}
             />
             {ActiveForm && (
               <ActiveForm.component

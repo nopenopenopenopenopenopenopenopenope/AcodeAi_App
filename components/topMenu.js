@@ -42,13 +42,13 @@ useEffect(() => {
   };
   const ammount = 0.1
   return (
-    <View style={[styles.container,{width:prototypeWidth / 1.08,alignSelf:'center',marginTop:prototypeHeight / 80,}]}>
+    <View style={[styles.container,{width:prototypeWidth / 1.08,alignSelf:'center',marginTop:prototypeHeight / 30,}]}>
     <View style={[styles.topPart,{height : prototypeHeight / 10,width:"100%" }]}>
     <TouchableOpacity onPress={toggleMenuOn}>
     <FontAwesome name={"navicon"} size={prototypeWidth / 11} color='#000' style={{marginLeft:prototypeWidth / 20}}/>
     </TouchableOpacity>
     <TouchableOpacity disabled={route === "home"} onPress={() => navigation.navigate('home')}>
-    <Image source={require('../assets/Logo.png')} resizeMode={'contain'} style={{minWidth:prototypeWidth / 4,height: prototypeHeight / 14, marginLeft:prototypeWidth / 20}}/>
+    <Image source={require('../assets/Logo.png')} resizeMode={'contain'} style={{maxWidth:prototypeWidth / 4,height: prototypeHeight / 14, marginLeft:prototypeWidth / 20}}/>
     </TouchableOpacity>
     <View style={{flexDirection:'row',flex:1,justifyContent:'flex-end',paddingRight:prototypeWidth / 20}}>
     <TouchableOpacity disabled={route === "profile"} onPress={() => navigation.navigate('profile')}>
@@ -63,7 +63,7 @@ useEffect(() => {
           outputRange: [10, prototypeHeight / 9]
         })
       }
-    ],},{height : prototypeHeight / 14, maxWidth:prototypeWidth / 1.08, padding:prototypeWidth / 20, gap:prototypeWidth / 20 }]}>
+    ],},{minHeight : prototypeHeight / 14, maxWidth:prototypeWidth / 1.08, padding:prototypeWidth / 20, gap:prototypeWidth / 20 }]}>
     <TouchableOpacity disabled={route === "stock"} onPress={() => navigation.navigate('stock')}>
     <FontAwesome5 name={"clipboard-list"} size={prototypeHeight / 35} color={route === "stock"? '#999':'#000'} style={{}}/>
     </TouchableOpacity>
@@ -101,8 +101,9 @@ const styles = StyleSheet.create({
     borderRadius:9,
     backgroundColor:"#ffffff",
     boxShadow:'0 2px 5px rgba(0, 0, 0, 0.1)',
-    position:'fixed',
+    position:'absolute',
     flexDirection:'row',
+
     alignItems:'center',
   },
   paragraph: {

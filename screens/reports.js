@@ -55,24 +55,36 @@ export default function Reports({ paciente, func }) {
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.headerRow}>
         <Text style={styles.sectionTitle}>Relatórios</Text>
+        {paciente &&(
         <TouchableOpacity onPress={() => func?.('report')}>
           <Feather name="plus" size={26} color="#36A06F" />
         </TouchableOpacity>
+        )}
       </View>
-      {reports.length === 0 ? (
-        <Text style={styles.emptyText}>Nenhum relatório registrado</Text>
+       {reports.length === 0 ? (
+        !paciente ? (
+          <Text style={styles.emptyText}>Nenhum paciente selecionado</Text>
+        ) : (
+          <Text style={styles.emptyText}>Nenhum relatório registrado</Text>
+        )
       ) : (
         reports.map((report, index) => <ReportCard key={index} report={report} />)
       )}
 
       <View style={[styles.headerRow, styles.headerRowSpaced]}>
         <Text style={styles.sectionTitle}>Check-ins</Text>
+        {paciente &&(
         <TouchableOpacity onPress={() => func?.('check')}>
           <Feather name="plus" size={26} color="#36A06F" />
         </TouchableOpacity>
+        )}
       </View>
       {checkins.length === 0 ? (
-        <Text style={styles.emptyText}>Nenhum check-in registrado</Text>
+        !paciente ? (
+          <Text style={styles.emptyText}>Nenhum paciente selecionado</Text>
+        ) : (
+          <Text style={styles.emptyText}>Nenhum check-in registrado</Text>
+        )
       ) : (
         checkins.map((checkin, index) => <CheckInCard key={index} checkin={checkin} />)
       )}

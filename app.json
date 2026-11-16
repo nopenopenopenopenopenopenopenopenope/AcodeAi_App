@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "tcc_v1",
+    "name": "AcodeAi",
     "slug": "snack-134826bc-c41f-4b12-9634-c73189fd5264",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,6 +11,9 @@
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
+    },
+    "androidStatusBar": {
+      "hidden": true
     },
     "ios": {
       "supportsTablet": true

@@ -52,15 +52,23 @@ export default function Medicine({ paciente, func }) {
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.headerRow}>
+      {paciente &&(<View style={styles.headerRow}>
         <Text style={styles.title}>Remédios receitados</Text>
         <TouchableOpacity onPress={() => func('medicine')}>
           <Feather name="plus" size={24} color="#36A06F" />
         </TouchableOpacity>
       </View>
+      )}
 
       {medicines.length === 0 ? (
+        !paciente ? (
+          <Text style={styles.emptyText}>Nenhum paciente selecionado</Text>
+        )
+          :
+          (
         <Text style={styles.emptyText}>Nenhum remédio cadastrado</Text>
+        )
+      
       ) : (
         medicines.map((medicine, index) => (
           <View key={index} style={styles.card}>

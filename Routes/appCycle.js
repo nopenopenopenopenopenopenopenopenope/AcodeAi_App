@@ -38,10 +38,12 @@ const AppCycle = ({
     <Stack.Navigator
       initialRouteName="home"
       screenOptions={{
+        animation: 'fade',
+        animationDuration: 300,
         contentStyle: {
           backgroundColor: '#F5F5F5',
           paddingBottom: prototypeHeight / 12,
-          paddingTop: prototypeHeight / 10 + prototypeHeight / 80,
+          paddingTop: prototypeHeight / 10 + prototypeHeight / 30,
         },
         headerShown: false,
       }}>
