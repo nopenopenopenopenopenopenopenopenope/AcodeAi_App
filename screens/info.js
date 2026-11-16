@@ -9,17 +9,8 @@ import Svg, { Polyline, Circle } from 'react-native-svg';
  *   id: string,                   // unique patient id, shown on screen for reference
  *   name: string,                 // "Samantha Silveira"
  *   birthDate: string,            // "dd/mm/aaaa", used to compute the age shown
- *   foto: string | null,          // patient photo uri
+ *   foto: string | null,          // patient photo (data URI base64)
  *   conditions: string[],         // "Condições:" list, e.g. ["Alzheimer", "Parkinson", "Hipertensão"]
- *   emergencyContacts: [
- *     {
- *       relation: string,         // "Filho", "Filha", etc.
- *       name: string,
- *       phone: string,            // display phone, e.g. "(00) 0-0000-0000"
- *       whatsapp: string,         // phone in international format for wa.me links, e.g. "5511900000000"
- *     },
- *     ...
- *   ],
  *   heartRate: {
  *     current: number,            // 96
  *     history: [
@@ -172,14 +163,6 @@ function HeartRateChart({ history }) {
 export default function Info({ paciente, func }) {
   const age = calculateAge(paciente?.birthDate);
 
-  const callContact = (phone) => {
-    Linking.openURL(`tel:${phone}`);
-  };
-
-  const whatsappContact = (whatsapp) => {
-    Linking.openURL(`https://wa.me/${whatsapp}`);
-  };
-
   const openLaudo = (file) => {
     Linking.openURL(file);
   };
@@ -231,25 +214,6 @@ export default function Info({ paciente, func }) {
         <Text style={styles.boldText}>Restrições alimentares: </Text>
         {paciente?.restrictions?.join(', ')}
       </Text>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Contatos de emergência</Text>
-        {paciente?.emergencyContacts?.map((contact, index) => (
-          <View key={index} style={styles.contactBlock}>
-            <Text style={styles.contactLine}>
-              {contact.relation}: {contact.name} {contact.phone}
-            </Text>
-            <View style={styles.contactActions}>
-              <TouchableOpacity onPress={() => whatsappContact(contact.whatsapp)}>
-                <Text style={styles.contactAction}>ir para WhatsApp</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => callContact(contact.phone)}>
-                <Text style={styles.contactAction}>Ligar</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
-      </View>
 
       <View style={styles.card}>
         <View style={styles.heartRateRow}>
@@ -424,18 +388,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  contactBlock: {
-    marginBottom: 8,
-  },
-  contactLine: {
-    fontSize: 14,
-    color: '#1A1A1A',
-  },
-  contactActions: {
-    flexDirection: 'row',
-    gap: 16,
-    marginTop: 2,
   },
   contactAction: {
     fontSize: 13,

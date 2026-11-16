@@ -47,7 +47,7 @@ const formatUsageDuration = (startDate) => {
   return formatUnit(diffYears, 'ano', 'anos', true);
 };
 
-export default function Medicine({ paciente, func }) {
+export default function Medicine({ paciente, func, onRemove }) {
   const medicines = paciente?.medicines ?? [];
 
   return (
@@ -87,6 +87,14 @@ export default function Medicine({ paciente, func }) {
                 Em uso: <Text style={styles.boldText}>{formatUsageDuration(medicine.start)}</Text>
               </Text>
             </View>
+            <View style={styles.cardActions}>
+              <TouchableOpacity onPress={() => func('medicine', medicine)}>
+                <Feather name="edit-2" size={18} color="#36A06F" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => onRemove?.(medicine.id)}>
+                <Feather name="trash-2" size={18} color="#D64545" />
+              </TouchableOpacity>
+            </View>
           </View>
         ))
       )}
@@ -111,6 +119,11 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     color: '#36A06F',
+  },
+  cardActions: {
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
   },
   emptyText: {
     fontSize: 15,

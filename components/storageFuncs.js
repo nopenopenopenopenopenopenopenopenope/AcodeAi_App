@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabaseClient';
 
@@ -10,7 +11,8 @@ import { supabase } from './supabaseClient';
   - 'user': o usuário atualmente logado (perfil + dados de sessão).
 
   Cadastro e login usam supabase.auth (email/senha). Dados extras
-  (name, phone) ficam no user_metadata do usuário de auth.
+  (name, phone, foto) ficam no user_metadata do usuário de auth. A foto de
+  perfil começa como a imagem padrão (userImg, base64).
 
   Ids no app:
    - paciente: o `codigo` de conexão (texto aleatório e único). É o que o
@@ -87,7 +89,7 @@ function todayIso() {
 
 function fail(context, error) {
   console.error(context, error);
-  alert(error?.message ?? 'Erro inesperado');
+  Alert.alert('Erro', error?.message ?? 'Erro inesperado');
   return null;
 }
 
@@ -120,12 +122,25 @@ async function dbIdDoPaciente(codigo) {
 }
 
 // ---- Foto do paciente (base64) ----
-const MAX_FOTO_CHARS = 200000; // mesmo limite do banco (~150 KB de imagem)
+const MAX_FOTO_CHARS = 500000; // ~370 KB de imagem; criar_paciente usa o mesmo limite
 
 // Aceita só data URI de imagem. Qualquer outra coisa (ex: o placeholder
 // atual dos forms) é ignorada.
 function fotoDataUri(value) {
   return typeof value === 'string' && value.startsWith('data:image/') ? value : null;
+}
+
+// Valor para uma coluna foto_path (text): undefined = não mexer (sem foto ou
+// valor que não é data URI), false = grande demais (já mostrou o alerta),
+// string = data URI pronta para gravar.
+function fotoParaBanco(value) {
+  const foto = fotoDataUri(value);
+  if (!foto) return undefined;
+  if (foto.length > MAX_FOTO_CHARS) {
+    Alert.alert('Atenção', 'A foto é muito grande. Escolha outra ou reduza o tamanho.');
+    return false;
+  }
+  return foto;
 }
 
 // ---- Recuperação de senha ----
@@ -134,11 +149,11 @@ export async function sendRecoveryCode(email) {
   const { error } = await supabase.auth.resetPasswordForEmail(email);
 
   if (error) {
-    alert(error.message);
+    Alert.alert('Erro', error.message);
     return null;
   }
 
-  alert('Enviamos um e-mail com instruções para redefinir sua senha.');
+  Alert.alert('E-mail enviado', 'Enviamos um e-mail com instruções para redefinir sua senha.');
   return true;
 }
 
@@ -176,12 +191,13 @@ export async function registrarUsuario(novoUsuario) {
     email,
     password: pword,
     options: {
-      data: { name, phone },
+      // foto padrão (base64) já no cadastro; vai no user_metadata
+      data: { name, phone, foto: userImg },
     },
   });
 
   if (signUpError) {
-    alert(signUpError.message);
+    Alert.alert('Erro', signUpError.message);
     return null;
   }
 
@@ -193,6 +209,7 @@ export async function registrarUsuario(novoUsuario) {
     name: authUser.user_metadata?.name ?? null,
     phone: authUser.user_metadata?.phone ?? null,
     registered: authUser.created_at,
+    foto: authUser.user_metadata?.foto ?? userImg,
   };
 
   await setStoredUser(usuarioComId);
@@ -209,7 +226,7 @@ export async function loginUsuario(email, pword) {
   });
 
   if (signInError) {
-    alert(signInError.message);
+    Alert.alert('Erro', signInError.message);
     return null;
   }
 
@@ -221,7 +238,8 @@ export async function loginUsuario(email, pword) {
     name: authUser.user_metadata?.name ?? '',
     phone: authUser.user_metadata?.phone ?? '',
     registered: authUser.created_at,
-    foto: userImg,
+    // contas antigas não têm foto no metadata: cai no padrão
+    foto: authUser.user_metadata?.foto ?? userImg,
   };
 
   await setStoredUser(usuario);
@@ -229,12 +247,14 @@ export async function loginUsuario(email, pword) {
 }
 
 // ---- Logout ----
-// Encerra a sessão de auth (senão o token continua válido) e limpa o
-// 'user' do AsyncStorage.
+// Limpa o 'user' do AsyncStorage ANTES de encerrar a sessão de auth: a tela
+// de login (e a splash) restauram o usuário salvo ao abrir, então se o
+// storage ainda tivesse o usuário (signOut é de rede e demora), o login
+// automático logava de volta e era preciso sair duas vezes.
 export async function logoutUsuario() {
-  await supabase.auth.signOut();
   await clearStoredUser();
   pacienteDbIds.clear();
+  await supabase.auth.signOut();
 }
 
 // ---- Pacientes ----
@@ -243,7 +263,6 @@ const PACIENTES_SELECT = `
   id_paciente_fk,
   Pacientes (
     *,
-    contatos_emergencia (*),
     medicamentos (*),
     laudos (*),
     tarefas (*),
@@ -251,8 +270,7 @@ const PACIENTES_SELECT = `
     checkins (*),
     batimentos (*),
     dietas (*),
-    dieta_registros (*),
-    dispositivos (*)
+    dieta_registros (*)
   )
 `;
 
@@ -294,17 +312,10 @@ function mapPaciente(p) {
     id: p.codigo, // o id do app é o código de conexão (mostre-o para compartilhar)
     name: p.Nome_paciente,
     birthDate: toBrDate(p.Data_Nascimento),
-    foto: p.foto ?? null, // data URI base64
+    foto: p.foto_path ?? null, // data URI base64 (coluna foto_path, text)
     conditions: p.Condicoes_Cronicas ?? [],
     bloodType: p.Tipo_Sanguineo ?? '',
     weight: p.Peso != null ? `${p.Peso} kg` : '',
-    emergencyContacts: (p.contatos_emergencia ?? []).map((c) => ({
-      id: c.id,
-      relation: c.parentesco ?? '',
-      name: c.nome ?? '',
-      phone: c.telefone ?? '',
-      whatsapp: c.whatsapp ?? '',
-    })),
     heartRate: {
       current: history.length ? history[history.length - 1].bpm : 0,
       history,
@@ -314,11 +325,6 @@ function mapPaciente(p) {
     schedule: (p.tarefas ?? []).map(LISTS.schedule.fromRow),
     reports: (p.relatorios ?? []).map(LISTS.reports.fromRow),
     checkins: (p.checkins ?? []).map(LISTS.checkins.fromRow),
-    devices: (p.dispositivos ?? []).map((d) => ({
-      id: d.id,
-      name: d.nome ?? '',
-      type: d.tipo ?? '',
-    })),
     diet,
   };
 }
@@ -345,13 +351,13 @@ export async function fetchPacientes(userId) {
 export async function criarPaciente(output) {
   const nascimento = output.age ? toIsoDate(output.age) : null;
   if (output.age && !nascimento) {
-    alert('Data de nascimento inválida. Use dd/mm/aaaa.');
+    Alert.alert('Atenção', 'Data de nascimento inválida. Use dd/mm/aaaa.');
     return null;
   }
 
   const foto = fotoDataUri(output.foto);
   if (foto && foto.length > MAX_FOTO_CHARS) {
-    alert('A foto é muito grande. Escolha outra ou reduza o tamanho.');
+    Alert.alert('Atenção', 'A foto é muito grande. Escolha outra ou reduza o tamanho.');
     return null;
   }
 
@@ -377,7 +383,7 @@ export async function atualizarPaciente(id, output) {
   if (output.age) {
     const nascimento = toIsoDate(output.age);
     if (!nascimento) {
-      alert('Data de nascimento inválida. Use dd/mm/aaaa.');
+      Alert.alert('Atenção', 'Data de nascimento inválida. Use dd/mm/aaaa.');
       return null;
     }
     patch.Data_Nascimento = nascimento;
@@ -389,10 +395,10 @@ export async function atualizarPaciente(id, output) {
   const foto = fotoDataUri(output.foto);
   if (foto) {
     if (foto.length > MAX_FOTO_CHARS) {
-      alert('A foto é muito grande. Escolha outra ou reduza o tamanho.');
+      Alert.alert('Atenção', 'A foto é muito grande. Escolha outra ou reduza o tamanho.');
       return null;
     }
-    patch.foto = foto;
+    patch.foto_path = foto;
   }
 
   const { data, error } = await supabase
@@ -421,7 +427,7 @@ export async function conectarPaciente(codigo) {
 export async function salvarPeso(id, weight) {
   const peso = toNumberOrNull(weight);
   if (peso === null) {
-    alert('Informe um peso válido.');
+    Alert.alert('Atenção', 'Informe um peso válido.');
     return null;
   }
   const { data, error } = await supabase
@@ -452,7 +458,7 @@ export async function registrarBatimento(id, bpm) {
 
 // ---- Listas do paciente (medicamentos, laudos, tarefas, relatórios, check-ins) ----
 // toRow: app -> banco (undefined = não alterar). fromRow: banco -> app.
-// `foto` ainda não é gravada: depende de Supabase Storage (foto_path).
+// `foto` (medicamentos) vai como data URI base64 em foto_path (text).
 
 const LISTS = {
   medicines: {
@@ -462,6 +468,7 @@ const LISTS = {
       inicio: e.start ? toIsoDate(e.start) : undefined,
       tratamento: e.treatment,
       frequencia: e.frequency,
+      foto_path: fotoParaBanco(e.foto),
     }),
     fromRow: (r) => ({
       id: r.id,
@@ -555,6 +562,7 @@ const LISTS = {
 export async function saveListItem(field, pacienteId, entry, existingId = null) {
   const cfg = LISTS[field];
   const row = clean(cfg.toRow(entry));
+  if (row.foto_path === false) return null; // foto grande demais
 
   // `pacienteId` é o código do paciente; as tabelas filhas usam id_paciente
   let query;
@@ -591,13 +599,13 @@ export async function salvarMetasDieta(pacienteId, metas) {
   };
 
   if (Object.values(campos).some(Number.isNaN)) {
-    alert('Use apenas números inteiros (sem letras ou vírgula).');
+    Alert.alert('Atenção', 'Use apenas números inteiros (sem letras ou vírgula).');
     return null;
   }
 
   const row = clean(campos);
   if (Object.keys(row).length === 0) {
-    alert('Preencha ao menos um campo.');
+    Alert.alert('Atenção', 'Preencha ao menos um campo.');
     return null;
   }
 
@@ -617,7 +625,7 @@ export async function registrarAgua(pacienteId, ml) {
   const quantidade = toNonNegInt(ml);
   if (!quantidade) {
     // undefined, 0 ou NaN
-    alert('Informe a quantidade de água em ml (número inteiro maior que 0).');
+    Alert.alert('Atenção', 'Informe a quantidade de água em ml (número inteiro maior que 0).');
     return null;
   }
 
@@ -631,6 +639,40 @@ export async function registrarAgua(pacienteId, ml) {
   });
 
   if (error) return fail('Erro ao registrar água', error);
+  return true;
+}
+
+// Registra uma refeição de hoje (uma linha nova em dieta_registros) com as
+// calorias e macros informados; todos opcionais, mas ao menos um é exigido.
+export async function registrarRefeicao(pacienteId, { calories, carbs, protein, lipids }) {
+  const campos = {
+    calorias: toNonNegInt(calories),
+    carbo: toNonNegInt(carbs),
+    proteina: toNonNegInt(protein),
+    lipidios: toNonNegInt(lipids),
+  };
+
+  if (Object.values(campos).some(Number.isNaN)) {
+    Alert.alert('Atenção', 'Use apenas números inteiros (sem letras ou vírgula).');
+    return null;
+  }
+
+  const row = clean(campos);
+  if (Object.keys(row).length === 0) {
+    Alert.alert('Atenção', 'Preencha ao menos um campo.');
+    return null;
+  }
+
+  const dbId = await dbIdDoPaciente(pacienteId);
+  if (!dbId) return null;
+
+  const { error } = await supabase.from('dieta_registros').insert({
+    id_paciente_fk: dbId,
+    data: todayIso(),
+    ...row,
+  });
+
+  if (error) return fail('Erro ao registrar refeição', error);
   return true;
 }
 
@@ -702,7 +744,9 @@ export async function saveProduto(estoqueId, entry, existingId = null) {
     nome: entry.name,
     quantidade: parseInt(entry.quantity, 10) || 0,
     ultima_aquisicao: entry.lastAcquisition ? toIsoDate(entry.lastAcquisition) : undefined,
+    foto_path: fotoParaBanco(entry.foto),
   });
+  if (row.foto_path === false) return null; // foto grande demais
 
   const query = existingId
     ? supabase.from('produtos').update(row).eq('id', existingId)
@@ -726,7 +770,43 @@ export async function conectarEstoque(codigo) {
   return { success: true, id: data };
 }
 
-// ---- Constantes ----
+// ---- Desconectar / remover (RPCs; ver desconectar.sql) ----
+// desconectar_*: só remove o vínculo do usuário. remover_*: apaga o registro e
+// os dados, mas o banco só permite se o usuário for o único conectado.
+// Todas retornam true, ou null (com alert) se falharem.
 
+export async function desconectarPaciente(codigo) {
+  const { error } = await supabase.rpc('desconectar_paciente', { p_codigo: codigo });
+  if (error) return fail('Erro ao desconectar paciente', error);
+  pacienteDbIds.delete(String(codigo));
+  return true;
+}
+
+export async function removerPaciente(codigo) {
+  const { error } = await supabase.rpc('remover_paciente', { p_codigo: codigo });
+  if (error) return fail('Erro ao remover paciente', error);
+  pacienteDbIds.delete(String(codigo));
+  return true;
+}
+
+export async function desconectarEstoque() {
+  const { error } = await supabase.rpc('desconectar_estoque');
+  if (error) return fail('Erro ao desconectar do estoque', error);
+  return true;
+}
+
+export async function removerEstoque() {
+  const { error } = await supabase.rpc('remover_estoque');
+  if (error) return fail('Erro ao remover estoque', error);
+  return true;
+}
+
+export async function removerMedicamento(id) {
+  const { error } = await supabase.rpc('remover_medicamento', { p_id: id });
+  if (error) return fail('Erro ao remover medicamento', error);
+  return true;
+}
+
+// ---- Constantes ----
 export const userImg =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJoAAACUCAMAAABcK8BVAAAAP1BMVEX///+ZmZmVlZXa2tqSkpLT09P7+/uvr6+Pj4+cnJypqan4+Pijo6Ps7Ozo6Ojf39/ExMS2tra9vb3Nzc3y8vJNRIxZAAAFOElEQVR4nO1c6XLzKgyNMV4w3s37P+tnJ2kTL/hIgN17Zzg/OtNOQw+SQCt9PCIiIiIiIiIiIiIi/lfQpsv6oaieKIY+64zO/5rU49GmfaFkKaUQyRNCyPnbpOrT9k95jZUSP5zWmH+qqvFv2OVdn5SHrL74VmVKMlUZk1CTh8CtVzDBmYFhKCcQSpQmZ+ozM3RgAAAAAAAABMBWMU0AjRrKIuySG62aBkyYlPaz43CKKhJwEGB88AKzOAMzqfeOT5cl1peYmVVDLPSdGQqpVrJQ4zUUYKb2C2ucms5nmLSCPV88BMFNvWFzNPQVEp6rgvWEL26HOiX4ud8FeAkCg9p8Fna+tEFJwU3UElGO7Ze3ydsRtZfXH+eVAVnUltZYMbWvO6CdCsUr/V5LbYYsS/nzlQcuNRmqg0GgdqWtCbkBuRTuQI18K4lS1kM/ZStM/VBL+lHg3WsdjVeixtQyo6PTsSa2nHnUSD5UFumpZzYpqU3DdFSEfENUePAlbwkpBjfdQxUBoYhHPoPl5oqZHIAC1oFzssEgwXELWefumZc8nq/FbqWlZ3EgN6095YardBvo0n5G+W25s3y0ZHc27MxcynXjyU75i9mM160FbA3gHHouqVUHTq0lbdUBvwjeWC5dpjP+hS1gsLXfznCcJLs3bywqdZleOD5VqMxhx3EuL12a8IdlLJ+O16HY2CWsJ47qAj59wqMmpOM0ykEzVOCitx1HNWeHSu6Cg34EauWd46DR5zpelO2X8prO2E+MOB2CBfueIbskvF5v76yc19rdH54jVNur0llo+wKgQ41/hW1w5DNOsfEuzk3fn+XW1Fx93gvr4JldR99gU/H3m0xct0tKz1npZkXN3ee9sKqvS19q3wr1H6/7Vqk/tc/1EWDQtLmKWoBB+i+fID3Hy82HGrOoZsFnGktMqRc+TtR/sO4J/WVuwg8fQws0NUyozfAgqmAPDxoZdprZ12ZX3IJWdplNKYCW1Qk4h+8VtOOGR21pEGFltgBPjNKYqQue3pgQ8/OMkiEH+Ujsvdoh+6ueUqV+ShXqwkePjY9SL34al2euL+OEyK5+UGhGVgPql9l4xxvRrmIfh7K66EXcnlzBkZwQxV3EHssb6YLakpVlcfdLadNX+ESIpOpve4f8Bd31qrSHS0Iuj3FCP9Cjw0xDrbYPqJZ4VtXDfe+2bdBNmo1Dpd5d7oXUmKXN34lrizzX2hijtc7/A//5ISIiIiIiIiIiIiKCi3/HUDjyBUAomQAAAABJRU5ErkJggg==';
+  'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQQchi5sg7mUmbWbRUeVh1Mus0NYioqXle1nMqVk5dcUQ&s=10';

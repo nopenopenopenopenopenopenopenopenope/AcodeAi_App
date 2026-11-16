@@ -5,6 +5,8 @@ import {
   Dimensions,
   Animated,
   Image,
+  Alert,
+  Platform,
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import {
@@ -20,6 +22,12 @@ import {
   setTarefaConcluida,
   salvarMetasDieta,
   registrarAgua,
+  registrarRefeicao,
+  desconectarPaciente,
+  removerPaciente,
+  desconectarEstoque,
+  removerEstoque,
+  removerMedicamento,
   salvarRestricoesDieta,
   fetchEstoques,
   saveProduto,
@@ -46,6 +54,8 @@ import DietF from './forms/dietForm';
 import { useState, useRef } from 'react';
 import TopMenu from './components/topMenu';
 import BottomMenu from './components/bottomMenu';
+import { StatusBar } from 'expo-status-bar';
+
 
 /*
   o que fazer:
@@ -141,11 +151,14 @@ export default function App() {
     await Promise.all([loadPacientes(usuario.id), loadEstoques(usuario.id)]);
   };
 
-  const handleLogout = () => {
-    // encerra a sessão do Supabase e limpa o 'user' do AsyncStorage
-    logoutUsuario().catch((error) =>
-      console.error('Erro ao encerrar sessão', error)
-    );
+  const handleLogout = async () => {
+    // espera o 'user' do AsyncStorage ser limpo antes de voltar ao login;
+    // senão o login automático restaura o usuário e logout "não pega"
+    try {
+      await logoutUsuario();
+    } catch (error) {
+      console.error('Erro ao encerrar sessão', error);
+    }
     setIsLoggedIn(false);
     setProfile(emptyProfile);
     setPacient([]);
@@ -200,7 +213,7 @@ export default function App() {
 
   const requireSelectedPacient = () => {
     if (!profile.selectedPacient) {
-      alert('Nenhum paciente selecionado');
+      Alert.alert('Atenção', 'Nenhum paciente selecionado');
       return null;
     }
     return profile.selectedPacient;
@@ -290,6 +303,7 @@ export default function App() {
       start: output.start || todayBR(),
       treatment: output.treatment,
       frequency: output.frequency,
+      foto: output.foto,
     });
 
   // Marca/desmarca uma tarefa como concluída (grava no banco).
@@ -323,7 +337,7 @@ export default function App() {
   // produto sempre é adicionado/editado dentro desse estoque.
   const saveStockProduct = async (output) => {
     if (!profile.stockId) {
-      alert('Conecte-se a um estoque primeiro.');
+      Alert.alert('Atenção', 'Conecte-se a um estoque primeiro.');
       return;
     }
 
@@ -333,6 +347,7 @@ export default function App() {
         name: output.name,
         quantity: output.quantity,
         lastAcquisition: output.lastAcquisition || todayBR(),
+        foto: output.foto,
       },
       formData?.id ?? null
     );
@@ -384,16 +399,15 @@ export default function App() {
     if (!code) return { success: false, error: 'Informe o código do paciente' };
 
     const pacientIds = profile.pacientIds ?? [];
+    if (pacientIds.includes(code.toUpperCase())) {
+      return { success: false, error: 'Você já está conectado a este paciente' };
+    }
     if (pacientIds.length >= (profile.pacientsLimit ?? Infinity)) {
       return { success: false, error: 'Limite de pacientes atingido' };
     }
 
     const result = await conectarPaciente(code);
     if (!result.success) return result;
-
-    if (pacientIds.includes(result.id)) {
-      return { success: false, error: 'Você já está conectado a este paciente' };
-    }
 
     await loadPacientes(profile.id);
     return { success: true };
@@ -405,7 +419,7 @@ export default function App() {
   // ela vai para Pacientes.Restricoes_Alimentares.
   const savePacient = async (output) => {
     if (!output?.name?.trim()) {
-      alert('Informe o nome do paciente.');
+      Alert.alert('Atenção', 'Informe o nome do paciente.');
       return;
     }
 
@@ -415,7 +429,7 @@ export default function App() {
       await loadPacientes(profile.id);
     } else {
       if ((profile.pacientIds ?? []).length >= (profile.pacientsLimit ?? Infinity)) {
-        alert('Limite de pacientes atingido');
+        Alert.alert('Atenção', 'Limite de pacientes atingido');
         return;
       }
       const novoId = await criarPaciente(output);
@@ -439,7 +453,7 @@ export default function App() {
   const saveHeartRate = async (output) => {
     const bpm = Number(output.current);
     if (!Number.isFinite(bpm) || bpm <= 0) {
-      alert('Informe um valor de batimentos válido.');
+      Alert.alert('Atenção', 'Informe um valor de batimentos válido.');
       return;
     }
     const pacienteId = requireSelectedPacient();
@@ -489,6 +503,13 @@ export default function App() {
       if (ok && filled(output.waterAdd)) {
         ok = await registrarAgua(pacienteId, output.waterAdd);
       }
+    } else if (output.section === 'meal') {
+      ok = await registrarRefeicao(pacienteId, {
+        calories: output.calories,
+        carbs: output.carbs,
+        protein: output.protein,
+        lipids: output.lipids,
+      });
     } else if (output.section === 'restrictions') {
       ok = await salvarRestricoesDieta(pacienteId, {
         allergies: output.allergies,
@@ -499,6 +520,105 @@ export default function App() {
     if (!ok) return;
     await loadPacientes(profile.id);
     closeForm();
+  };
+
+  // ---- Desconectar / remover paciente, estoque e medicamento ----
+  // Alert.alert com botões não faz nada no web (react-native-web), então lá
+  // usa window.confirm. A confirmação roda FORA do `guarded`, senão o lock
+  // de salvar ficaria preso enquanto o diálogo está aberto.
+  const confirmar = (titulo, mensagem, textoOk) => {
+    if (Platform.OS === 'web') {
+      return Promise.resolve(window.confirm(`${titulo}\n\n${mensagem}`));
+    }
+    return new Promise((resolve) => {
+      Alert.alert(
+        titulo,
+        mensagem,
+        [
+          { text: 'Cancelar', style: 'cancel', onPress: () => resolve(false) },
+          { text: textoOk, style: 'destructive', onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) }
+      );
+    });
+  };
+
+  const nomeDoPaciente = (id) => pacient.find((p) => p.id === id)?.name ?? 'este paciente';
+
+  const disconnectPacient = async (id) => {
+    const ok = await confirmar(
+      'Desconectar paciente',
+      `Você deixará de ter acesso a ${nomeDoPaciente(id)}. Os dados continuam salvos e você pode reconectar pelo código.`,
+      'Desconectar'
+    );
+    if (!ok) return;
+    await guarded(async () => {
+      if (!(await desconectarPaciente(id))) return;
+      await loadPacientes(profile.id);
+    })();
+  };
+
+  const removePacient = async (id) => {
+    const ok = await confirmar(
+      'Remover paciente',
+      `Isso apaga ${nomeDoPaciente(id)} e todos os dados (medicamentos, laudos, agenda, dieta...). Não dá para desfazer.`,
+      'Remover'
+    );
+    if (!ok) return;
+    await guarded(async () => {
+      if (!(await removerPaciente(id))) return;
+      await loadPacientes(profile.id);
+    })();
+  };
+
+  const disconnectStock = async () => {
+    const ok = await confirmar(
+      'Desconectar do estoque',
+      'Você deixará de ter acesso a este estoque. Ele continua existindo para os outros usuários e você pode reconectar pelo código.',
+      'Desconectar'
+    );
+    if (!ok) return;
+    await guarded(async () => {
+      if (!(await desconectarEstoque())) return;
+      await loadEstoques(profile.id);
+    })();
+  };
+
+  const removeStock = async () => {
+    const ok = await confirmar(
+      'Remover estoque',
+      'Isso apaga o estoque e todos os produtos. Não dá para desfazer.',
+      'Remover'
+    );
+    if (!ok) return;
+    await guarded(async () => {
+      if (!(await removerEstoque())) return;
+      await loadEstoques(profile.id);
+    })();
+  };
+
+  const removeMedicine = async (id) => {
+    const pacienteId = requireSelectedPacient();
+    if (!pacienteId) return;
+    const nome = pacient
+      .find((p) => p.id === pacienteId)
+      ?.medicines?.find((m) => m.id === id)?.name;
+    const ok = await confirmar(
+      'Remover medicamento',
+      `Remover ${nome ?? 'este medicamento'} da lista? Não dá para desfazer.`,
+      'Remover'
+    );
+    if (!ok) return;
+    await guarded(async () => {
+      if (!(await removerMedicamento(id))) return;
+      setPacient((prev) =>
+        prev.map((p) =>
+          p.id !== pacienteId
+            ? p
+            : { ...p, medicines: (p.medicines ?? []).filter((m) => m.id !== id) }
+        )
+      );
+    })();
   };
 
   const forms = {
@@ -524,6 +644,8 @@ export default function App() {
   const ActiveForm = forms[form];
 
   return (
+    <>
+    <StatusBar hidden />
     <NavigationContainer ref={navigationRef}>
       <View style={{ flex: 1 }}>
         {isLoggedIn ? (
@@ -534,6 +656,11 @@ export default function App() {
               pacientstuff={pacient}
               stockstuff={stock}
               onSelectPacient={onSelectPacient}
+              onDisconnectPacient={disconnectPacient}
+              onRemovePacient={removePacient}
+              onDisconnectStock={disconnectStock}
+              onRemoveStock={removeStock}
+              onRemoveMedicine={removeMedicine}
               onToggleTask={toggleTask}
             />
             {ActiveForm && (
@@ -578,6 +705,7 @@ export default function App() {
         )}
       </View>
     </NavigationContainer>
+    </>
   );
 }
 

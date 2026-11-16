@@ -11,7 +11,7 @@ import { useState } from 'react';
 
 /*
   Same pattern as ConnectStockF: `useOutput` returns a result
-  synchronously ({ success, error }) instead of always closing — a
+  (async, with await) ({ success, error }) instead of always closing — a
   caregiver can be connected to several patients (up to
   profile.pacientsLimit), but each code has to match an existing patient,
   so this stays open and shows the error on failure instead of closing.
@@ -19,13 +19,23 @@ import { useState } from 'react';
 export default function ConnectPacientF({ style, closeForm, useOutput, initialData }) {
   const [codigo, setCodigo] = useState(initialData?.pacientId ?? '');
   const [erro, setErro] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const formOutput = () => {
+  const formOutput = async () => {
+    if (loading) return;
     const output = {
       pacientId: codigo,
     };
 
-    const result = useOutput(output);
+    // useOutput é async (chama o banco): precisa de await, senão `result`
+    // é uma Promise e o form sempre cai no erro, mesmo conectando.
+    setLoading(true);
+    let result;
+    try {
+      result = await useOutput(output);
+    } finally {
+      setLoading(false);
+    }
     if (result?.success) {
       setErro('');
       closeForm();

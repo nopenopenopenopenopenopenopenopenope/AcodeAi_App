@@ -34,7 +34,7 @@ import { Feather } from '@expo/vector-icons';
  * when the caregiver has no patient registered yet.
  */
 
-export default function Profile({ navigation, profile, pacients, func, onSelectPacient }) {
+export default function Profile({ navigation, profile, pacients, func, onSelectPacient, onDisconnectPacient, onRemovePacient }) {
   const [showSenha, setShowSenha] = useState(false);
   const [showPacienteSenha, setShowPacienteSenha] = useState(false);
 
@@ -173,6 +173,22 @@ export default function Profile({ navigation, profile, pacients, func, onSelectP
             {paciente ? 'Paciente logado' : 'Logar novo paciente'}
           </Text>
         </TouchableOpacity>
+        {paciente && (
+          <>
+            <TouchableOpacity
+              style={styles.buttonSecondary}
+              onPress={() => onDisconnectPacient?.(paciente.id)}
+            >
+              <Text style={styles.buttonSecondaryText}>Desconectar paciente</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.buttonDanger}
+              onPress={() => onRemovePacient?.(paciente.id)}
+            >
+              <Text style={styles.buttonDangerText}>Remover paciente</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
     </ScrollView>
   );
@@ -312,6 +328,28 @@ const styles = StyleSheet.create({
   },
   buttonPrimaryText: {
     color: '#F5F5F5',
+    fontWeight: '600',
+  },
+  buttonSecondary: {
+    borderWidth: 1,
+    borderColor: '#36A06F',
+    borderRadius: 8,
+    padding: 10,
+    alignItems: 'center',
+  },
+  buttonSecondaryText: {
+    color: '#36A06F',
+    fontWeight: '600',
+  },
+  buttonDanger: {
+    borderWidth: 1,
+    borderColor: '#D64545',
+    borderRadius: 8,
+    padding: 10,
+    alignItems: 'center',
+  },
+  buttonDangerText: {
+    color: '#D64545',
     fontWeight: '600',
   },
 });

@@ -14,6 +14,8 @@ import { useState } from 'react';
   decidido por initialData.section, que a tela passa em func('diet', {...}):
 
    - 'goals'        -> metas de calorias e macros (calories, carbs, protein, lipids)
+   - 'meal'         -> refeição consumida agora (calories, carbs, protein, lipids),
+                       soma ao total de hoje
    - 'water'        -> meta de água (water) e água consumida agora (waterAdd), em ml
    - 'restrictions' -> alergias e intolerâncias (allergies, intolerances),
                        separadas por vírgula
@@ -24,6 +26,7 @@ import { useState } from 'react';
 
 const TITLES = {
   goals: 'Metas diárias',
+  meal: 'Registrar refeição',
   water: 'Consumo de água',
   restrictions: 'Restrições alimentares',
 };
@@ -67,29 +70,29 @@ export default function DietF({ style, closeForm, useOutput, initialData }) {
         <TouchableOpacity style={styles.form} activeOpacity={1}>
           <Text style={styles.title}>{TITLES[section] ?? TITLES.goals}</Text>
 
-          {section === 'goals' && (
+          {(section === 'goals' || section === 'meal') && (
             <>
               <Field
-                label="Meta de calorias (kcal)"
+                label={section === 'meal' ? 'Calorias consumidas (kcal)' : 'Meta de calorias (kcal)'}
                 keyboardType="numeric"
                 placeholder="Ex: 2000"
                 value={v.calories}
                 onChangeText={set('calories')}
               />
               <Field
-                label="Carboidratos (g)"
+                label={section === 'meal' ? 'Carboidratos consumidos (g)' : 'Carboidratos (g)'}
                 keyboardType="numeric"
                 value={v.carbs}
                 onChangeText={set('carbs')}
               />
               <Field
-                label="Proteínas (g)"
+                label={section === 'meal' ? 'Proteínas consumidas (g)' : 'Proteínas (g)'}
                 keyboardType="numeric"
                 value={v.protein}
                 onChangeText={set('protein')}
               />
               <Field
-                label="Lipídios (g)"
+                label={section === 'meal' ? 'Lipídios consumidos (g)' : 'Lipídios (g)'}
                 keyboardType="numeric"
                 value={v.lipids}
                 onChangeText={set('lipids')}

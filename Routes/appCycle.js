@@ -29,6 +29,11 @@ const AppCycle = ({
   pacientstuff,
   stockstuff,
   onSelectPacient,
+  onDisconnectPacient,
+  onRemovePacient,
+  onDisconnectStock,
+  onRemoveStock,
+  onRemoveMedicine,
 }) => {
   const prototypeHeight = Dimensions.get('window').height;
   const selectedPacient = getSelectedPacient(profilestuff, pacientstuff);
@@ -58,6 +63,8 @@ const AppCycle = ({
             pacients={pacientstuff}
             func={openForm}
             onSelectPacient={onSelectPacient}
+            onDisconnectPacient={onDisconnectPacient}
+            onRemovePacient={onRemovePacient}
           />
         )}
       </Stack.Screen>
@@ -74,7 +81,15 @@ const AppCycle = ({
         {(props) => <Calendar {...props} paciente={selectedPacient} func={openForm} />}
       </Stack.Screen>
       <Stack.Screen name="stock">
-        {(props) => <Stock {...props} stock={userStock} func={openForm} />}
+        {(props) => (
+          <Stock
+            {...props}
+            stock={userStock}
+            func={openForm}
+            onDisconnect={onDisconnectStock}
+            onRemove={onRemoveStock}
+          />
+        )}
       </Stack.Screen>
       <Stack.Screen name="reports">
         {(props) => <Reports {...props} paciente={selectedPacient} func={openForm} />}
@@ -88,6 +103,7 @@ const AppCycle = ({
             {...props}
             paciente={selectedPacient}
             func={openForm}
+            onRemove={onRemoveMedicine}
           />
         )}
       </Stack.Screen>

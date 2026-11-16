@@ -10,7 +10,7 @@ import {
 import { useState } from 'react';
 
 /*
-  Unlike the other forms, `useOutput` here returns a result synchronously
+  Unlike the other forms, `useOutput` here returns a result (async, awaited)
   ({ success, error }) instead of always closing the form — a user can be
   connected to at most one stock, so this stays open and shows the error
   if the code doesn't match an existing stock, instead of just closing.
@@ -18,13 +18,23 @@ import { useState } from 'react';
 export default function ConnectStockF({ style, closeForm, useOutput, initialData }) {
   const [codigo, setCodigo] = useState(initialData?.stockId ?? '');
   const [erro, setErro] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const formOutput = () => {
+  const formOutput = async () => {
+    if (loading) return;
     const output = {
       stockId: codigo,
     };
 
-    const result = useOutput(output);
+    // useOutput é async (chama o banco): precisa de await, senão `result`
+    // é uma Promise e o form sempre cai no erro, mesmo conectando.
+    setLoading(true);
+    let result;
+    try {
+      result = await useOutput(output);
+    } finally {
+      setLoading(false);
+    }
     if (result?.success) {
       setErro('');
       closeForm();

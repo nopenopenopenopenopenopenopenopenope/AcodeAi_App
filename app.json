@@ -12,9 +12,6 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "androidStatusBar": {
-      "hidden": true
-    },
     "ios": {
       "supportsTablet": true
     },
@@ -23,7 +20,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "package": "com.nathan_morais.snack134826bcc41f4b129634c73189fd5264"
     },
     "web": {
       "favicon": "./assets/favicon.png"

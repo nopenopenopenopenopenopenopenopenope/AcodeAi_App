@@ -34,7 +34,7 @@ function NoStock({ func }) {
   );
 }
 
-export default function Stock({ stock, func }) {
+export default function Stock({ stock, func, onDisconnect, onRemove }) {
   const products = stock?.products ?? [];
 
   return (
@@ -47,7 +47,7 @@ export default function Stock({ stock, func }) {
           </TouchableOpacity>
         )}
       </View>
-      {!!stock && <Text style={styles.stockId}>ID do estoque: {stock.id}</Text>}
+      {!!stock && <Text style={styles.stockId}>Código do estoque: {stock.codigo ?? stock.id}</Text>}
 
       {!stock ? (
         <NoStock func={func} />
@@ -77,6 +77,17 @@ export default function Stock({ stock, func }) {
             </TouchableOpacity>
           </View>
         ))
+      )}
+
+      {!!stock && (
+        <View style={styles.stockActions}>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => onDisconnect?.()}>
+            <Text style={styles.secondaryButtonText}>Desconectar do estoque</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.dangerButton} onPress={() => onRemove?.()}>
+            <Text style={styles.dangerButtonText}>Remover estoque</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </ScrollView>
   );
@@ -133,6 +144,23 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
+  },
+  stockActions: {
+    gap: 12,
+    marginTop: 8,
+    marginBottom: 24,
+  },
+  dangerButton: {
+    borderWidth: 1,
+    borderColor: '#D64545',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  dangerButtonText: {
+    color: '#D64545',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
   secondaryButtonText: {
     color: '#36A06F',

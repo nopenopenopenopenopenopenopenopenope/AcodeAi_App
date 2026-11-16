@@ -151,8 +151,18 @@ export default function Diet({ paciente, func }) {
         </View>
       </View>
 
-      {!diet ? (
-        <Text style={styles.emptyText}>Nenhuma dieta configurada</Text>
+      {!paciente ? (
+              <Text style={styles.emptyText}>Nenhum paciente selecionado</Text>
+            ) : !diet ? (
+        <>
+          <Text style={styles.emptyText}>Nenhuma dieta configurada</Text>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={() => func?.('diet', { section: 'goals' })}
+          >
+            <Text style={styles.buttonText}>Configurar metas</Text>
+          </TouchableOpacity>
+        </>
       ) : (
         <>
           <View style={styles.calorieCard}>
@@ -175,7 +185,22 @@ export default function Diet({ paciente, func }) {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.button} onPress={() => func?.('diet')}>
+          <TouchableOpacity style={styles.button} onPress={() => func?.('diet', { section: 'meal' })}>
+            <Text style={styles.buttonText}>Registrar refeição</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.button}
+            onPress={() =>
+              func?.('diet', {
+                section: 'goals',
+                calories: calories.goal || '',
+                carbs: carbs.goal || '',
+                protein: protein.goal || '',
+                lipids: lipids.goal || '',
+              })
+            }
+          >
             <Text style={styles.buttonText}>Modificar</Text>
           </TouchableOpacity>
 
@@ -194,7 +219,10 @@ export default function Diet({ paciente, func }) {
             </ProgressRing>
           </View>
 
-          <TouchableOpacity style={styles.button} onPress={() => func?.('diet')}>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={() => func?.('diet', { section: 'water', water: water.goal || '' })}
+          >
             <Text style={styles.buttonText}>Modificar</Text>
           </TouchableOpacity>
 
@@ -218,7 +246,16 @@ export default function Diet({ paciente, func }) {
             ))
           )}
 
-          <TouchableOpacity style={styles.button} onPress={() => func?.('diet')}>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={() =>
+              func?.('diet', {
+                section: 'restrictions',
+                allergies: allergies.join(', '),
+                intolerances: intolerances.join(', '),
+              })
+            }
+          >
             <Text style={styles.buttonText}>Modificar</Text>
           </TouchableOpacity>
         </>
