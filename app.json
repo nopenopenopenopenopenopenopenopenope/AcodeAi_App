@@ -17,17 +17,21 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.nathan_morais.snack134826bcc41f4b129634c73189fd5264"
+      "package": "com.Acodeai2026"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "@react-native-community/datetimepicker",
-      "expo-status-bar"
+      ["expo-status-bar",
+      {
+          "hidden": true
+        }
+      ]
     ]
   }
 }
