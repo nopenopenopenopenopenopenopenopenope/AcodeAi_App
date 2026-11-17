@@ -34,6 +34,7 @@ const AppCycle = ({
   onDisconnectStock,
   onRemoveStock,
   onRemoveMedicine,
+  onDeleteUser
 }) => {
   const prototypeHeight = Dimensions.get('window').height;
   const selectedPacient = getSelectedPacient(profilestuff, pacientstuff);
@@ -65,6 +66,7 @@ const AppCycle = ({
             onSelectPacient={onSelectPacient}
             onDisconnectPacient={onDisconnectPacient}
             onRemovePacient={onRemovePacient}
+            onDeleteUser={onDeleteUser}
           />
         )}
       </Stack.Screen>

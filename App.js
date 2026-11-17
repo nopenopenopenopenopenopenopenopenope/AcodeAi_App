@@ -6,8 +6,12 @@ import {
   Animated,
   Image,
   Alert,
-  Platform,
+  Platform
 } from 'react-native';
+import {
+  SafeAreaView,
+  SafeAreaProvider,
+} from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import {
   logoutUsuario,
@@ -33,6 +37,8 @@ import {
   saveProduto,
   criarEstoque,
   conectarEstoque,
+  atualizarUsuario,
+  apagarUsuario
 } from './components/storageFuncs';
 import Splash from './Routes/splashScreen';
 import AppCycle from './Routes/appCycle';
@@ -45,6 +51,7 @@ import PacientF from './forms/pacientForm';
 import ReportF from './forms/reportForm';
 import StockF from './forms/stockForm';
 import TaskF from './forms/taskForm';
+import profiler from './forms/profiler';
 import CreateStockF from './forms/createStockForm';
 import ConnectStockF from './forms/connectStockForm';
 import ConnectPacientF from './forms/connectPacientForm';
@@ -477,7 +484,27 @@ export default function App() {
     );
     closeForm();
   };
+  const saveProfile = async (output) => {
+  if (!output?.name?.trim()) {
+    Alert.alert('Atenção', 'Informe seu nome.');
+    return;
+  }
 
+  const usuarioAtualizado = await atualizarUsuario({
+    name: output.name.trim(),
+    foto: output.foto,
+  });
+
+  if (!usuarioAtualizado) return;
+
+  setProfile((prev) => ({
+    ...prev,
+    name: usuarioAtualizado.name,
+    foto: usuarioAtualizado.foto,
+  }));
+
+  closeForm();
+};
   // Grava a seção da dieta que o DietF abriu (output.section) e recarrega
   // os pacientes, para o `diet` da tela vir sempre recalculado do banco.
   const saveDiet = async (output) => {
@@ -542,6 +569,25 @@ export default function App() {
       );
     });
   };
+
+  const deleteUser = async (id) => {
+    console.log('test')
+    const ok = await confirmar(
+      'Apagar conta',
+      `Você está prestes a apagar a sua conta, essa ação é IRREVERSIVEL. \nVocê tem certeza que quer continuar?`,
+      'apagar conta'
+    );
+    if (!ok) return;
+    
+    await guarded(async () => {
+      if (!(await apagarUsuario(id))) return;
+      await loadPacientes(profile.id);
+    })();
+    setIsLoggedIn(false);
+    setProfile(emptyProfile);
+    setPacient([]);
+    setStock([]);
+  }
 
   const nomeDoPaciente = (id) => pacient.find((p) => p.id === id)?.name ?? 'este paciente';
 
@@ -635,6 +681,10 @@ export default function App() {
     weight: { component: WeightF, output: guarded(saveWeight) },
     heartRate: { component: HeartRateF, output: guarded(saveHeartRate) },
     diet: { component: DietF, output: guarded(saveDiet) },
+    profile: {
+  component: profiler,
+  output: guarded(saveProfile),
+},
   };
 
   const onSelectPacient = (id) => {
@@ -644,8 +694,12 @@ export default function App() {
   const ActiveForm = forms[form];
 
   return (
-    <>
-    <StatusBar hidden />
+     <SafeAreaProvider>
+    <SafeAreaView
+      style={{ flex: 1 }}
+      edges={['top', 'bottom', 'left', 'right']}
+    >
+    <StatusBar hidden={true} />
     <NavigationContainer ref={navigationRef}>
       <View style={{ flex: 1 }}>
         {isLoggedIn ? (
@@ -662,6 +716,7 @@ export default function App() {
               onRemoveStock={removeStock}
               onRemoveMedicine={removeMedicine}
               onToggleTask={toggleTask}
+              onDeleteUser={deleteUser}
             />
             {ActiveForm && (
               <ActiveForm.component
@@ -705,7 +760,8 @@ export default function App() {
         )}
       </View>
     </NavigationContainer>
-    </>
+    </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 

@@ -144,7 +144,32 @@ function fotoParaBanco(value) {
 }
 
 // ---- Recuperação de senha ----
+export async function apagarUsuario() {
+  try {
+    console.log('attempt')
+    const { data, error } =
+  await supabase.functions.invoke('smart-action');
 
+    if (error) {
+      Alert.alert('Erro', error.message);
+      return null;
+    }
+
+    if (!data?.success) {
+      Alert.alert('Erro', data?.error ?? 'Erro ao excluir conta.');
+      return null;
+    }
+
+    await clearStoredUser();
+    pacienteDbIds.clear();
+    await supabase.auth.signOut();
+
+    return true;
+
+  } catch (error) {
+    return fail('Erro ao excluir usuário', error);
+  }
+}
 export async function sendRecoveryCode(email) {
   const { error } = await supabase.auth.resetPasswordForEmail(email);
 
@@ -245,7 +270,45 @@ export async function loginUsuario(email, pword) {
   await setStoredUser(usuario);
   return usuario;
 }
+// ---- Atualizar nome e foto do usuário ----
 
+export async function atualizarUsuario({ name, foto }) {
+  try {
+    const usuarioAtual = await getStoredUser();
+
+    if (!usuarioAtual) {
+      Alert.alert('Erro', 'Nenhum usuário está logado.');
+      return null;
+    }
+
+    const { data, error } = await supabase.auth.updateUser({
+      data: {
+        name: name ?? usuarioAtual.name,
+        foto: foto ?? usuarioAtual.foto ?? userImg,
+      },
+    });
+
+    if (error) {
+      Alert.alert('Erro', error.message);
+      return null;
+    }
+
+    const authUser = data.user;
+
+    const usuarioAtualizado = {
+      ...usuarioAtual,
+      name: authUser.user_metadata?.name ?? usuarioAtual.name,
+      foto: authUser.user_metadata?.foto ?? usuarioAtual.foto ?? userImg,
+    };
+
+    await setStoredUser(usuarioAtualizado);
+
+    return usuarioAtualizado;
+
+  } catch (error) {
+    return fail('Erro ao atualizar usuário', error);
+  }
+}
 // ---- Logout ----
 // Limpa o 'user' do AsyncStorage ANTES de encerrar a sessão de auth: a tela
 // de login (e a splash) restauram o usuário salvo ao abrir, então se o

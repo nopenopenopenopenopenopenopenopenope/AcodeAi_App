@@ -34,7 +34,7 @@ import { Feather } from '@expo/vector-icons';
  * when the caregiver has no patient registered yet.
  */
 
-export default function Profile({ navigation, profile, pacients, func, onSelectPacient, onDisconnectPacient, onRemovePacient }) {
+export default function Profile({ navigation, profile, pacients, func, onSelectPacient, onDisconnectPacient, onRemovePacient, onDeleteUser }) {
   const [showSenha, setShowSenha] = useState(false);
   const [showPacienteSenha, setShowPacienteSenha] = useState(false);
 
@@ -74,13 +74,13 @@ export default function Profile({ navigation, profile, pacients, func, onSelectP
             <Feather name="user" size={56} color="#B3B3B3" />
           </View>
         )}
+        <TouchableOpacity onPress={() => {func('profile', profile)}} style={{position:'absolute', bottom:0, right:0}}>
+          <Feather name="edit-2" size={18} color="#36A06F" />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.nameRow}>
         <Text style={styles.name}>{profile?.name}</Text>
-        <TouchableOpacity onPress={() => {}}>
-          <Feather name="edit-2" size={18} color="#36A06F" />
-        </TouchableOpacity>
       </View>
       <Text style={styles.role}>{profile?.role}</Text>
 
@@ -99,20 +99,6 @@ export default function Profile({ navigation, profile, pacients, func, onSelectP
           <Text style={styles.label}>Celular</Text>
         </View>
         <Text style={styles.value}>{profile?.phone}</Text>
-      </View>
-      <View style={styles.divider} />
-
-      <View style={styles.field}>
-        <View style={styles.labelRow}>
-          <Feather name="lock" size={18} color="#333333" />
-          <Text style={styles.label}>Senha</Text>
-        </View>
-        <View style={styles.secretRow}>
-          <Text style={styles.value}>{showSenha ? profile?.senha : '****************'}</Text>
-          <TouchableOpacity onPress={() => setShowSenha(!showSenha)}>
-            <Feather name={showSenha ? 'eye-off' : 'eye'} size={18} color="#808080" />
-          </TouchableOpacity>
-        </View>
       </View>
       <View style={styles.divider} />
 
@@ -189,6 +175,12 @@ export default function Profile({ navigation, profile, pacients, func, onSelectP
             </TouchableOpacity>
           </>
         )}
+        <TouchableOpacity
+              style={styles.buttonDanger}
+              onPress={() => onDeleteUser?.(profile.id)}
+            >
+              <Text style={styles.buttonDangerText}>Remover Usuario</Text>
+            </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -202,9 +194,10 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   avatarWrapper: {
-    alignItems: 'center',
+    alignSelf: 'center',
     marginTop: 8,
     marginBottom: 16,
+    width:AVATAR_SIZE,
   },
   avatar: {
     width: AVATAR_SIZE,
