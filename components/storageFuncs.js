@@ -1,6 +1,17 @@
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabaseClient';
+import {
+  limparTexto,
+  validarNome,
+  validarEmail,
+  validarTelefone,
+  validarSenha,
+  validarDataBr,
+  validarBpm,
+  validarPeso,
+  validarCodigo,
+} from './validacao';
 
 /*
   Único arquivo de armazenamento do app: AsyncStorage (usuário logado),
@@ -12,26 +23,27 @@ import { supabase } from './supabaseClient';
 
   Cadastro e login usam supabase.auth (email/senha). Dados extras
   (name, phone, foto) ficam no user_metadata do usuário de auth. A foto de
-  perfil começa como a imagem padrão (userImg, base64).
+  perfil começa como a imagem padrão (userImg).
 
   Ids no app:
-   - paciente: o `codigo` de conexão (texto aleatório e único). É o que o
-     usuário digita para se conectar e é o id que telas/forms usam. O
+   - paciente: o `codigo` de conexão (texto aleatório e único). O
      id_paciente (bigint) fica só no banco: aqui dentro ele é traduzido
      por dbIdDoPaciente() e nunca sai deste arquivo.
    - listas (medicamentos, laudos, tarefas, ...), produtos e estoque: uuid
-   - foto do paciente: data URI base64 ('data:image/jpeg;base64,...')
+   - foto: data URI base64 ('data:image/jpeg;base64,...')
 
-  Funções que falham mostram alert e retornam null (ou { success: false,
-  error } nas de conectar). Os nomes de tabela seguem o dump do banco
-  ("Pacientes" com P maiúsculo).
+  [SEGURANÇA] Mudanças desta versão (procure por "[SEGURANÇA]"):
+   1. Mensagens de erro genéricas (sem vazar mensagem do Supabase/banco).
+   2. Política de senha + validação de entradas no cadastro.
+   3. Consentimento (aceite dos termos) registrado no cadastro.
+   4. Tipos de imagem permitidos (jpeg/png/webp) — SVG e outros são recusados.
+   5. Logs de erro detalhados só em desenvolvimento (__DEV__).
 */
 
 // ---- Helpers ----
 
 const pad = (n) => String(n).padStart(2, '0');
 
-// 'dd/mm/yyyy' (ou 'd/m/yyyy') -> 'yyyy-mm-dd'. Vazio/inválido -> null.
 function toIsoDate(value) {
   if (!value) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
@@ -41,19 +53,16 @@ function toIsoDate(value) {
   return `${yyyy}-${pad(mm)}-${pad(dd)}`;
 }
 
-// 'yyyy-mm-dd' (ou timestamp ISO) -> 'dd/mm/yyyy'
 function toBrDate(value) {
   if (!value) return '';
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
 }
 
-// Aceita array ou texto separado por vírgula e devolve sempre um array
-// limpo, pois as colunas são text[].
 function toArray(value) {
-  if (Array.isArray(value)) return value.filter(Boolean);
+  if (Array.isArray(value)) return value.map((i) => limparTexto(i, 100)).filter(Boolean);
   if (typeof value === 'string') {
-    return value.split(',').map((item) => item.trim()).filter(Boolean);
+    return value.split(',').map((item) => limparTexto(item, 100)).filter(Boolean);
   }
   return [];
 }
@@ -63,7 +72,6 @@ const toNumberOrNull = (value) => {
   return Number.isFinite(n) ? n : null;
 };
 
-// '' / undefined -> undefined (não altera) | inteiro >= 0 -> número | resto -> NaN
 function toNonNegInt(value) {
   if (value === undefined || value === null || String(value).trim() === '') {
     return undefined;
@@ -74,31 +82,25 @@ function toNonNegInt(value) {
 
 const first = (value) => (Array.isArray(value) ? value[0] : value) ?? null;
 
-// Remove chaves undefined: num update, campo ausente = "não mexer".
 const clean = (row) =>
   Object.fromEntries(Object.entries(row).filter(([, v]) => v !== undefined));
 
 const formatHour = (date) => `${date.getHours()}:${pad(date.getMinutes())}`;
 
-// Data local de hoje em 'yyyy-mm-dd' (o default do banco usa a data do
-// servidor, em UTC, e viraria "amanhã" à noite no Brasil).
 function todayIso() {
   const d = new Date();
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+// [SEGURANÇA] O detalhe técnico do erro (nome de tabela, constraint, etc.)
+// só vai para o log em desenvolvimento. O usuário vê uma mensagem genérica.
 function fail(context, error) {
-  console.error(context, error);
-  Alert.alert('Erro', error?.message ?? 'Erro inesperado');
+  if (__DEV__) console.error(context, error);
+  Alert.alert('Erro', 'Não foi possível concluir a operação. Tente novamente.');
   return null;
 }
 
 // ---- Código do paciente <-> id_paciente (bigint) ----
-// No app o paciente é identificado pelo `codigo`. As tabelas filhas
-// (medicamentos, batimentos, dietas, ...) ainda apontam para o
-// id_paciente, então o código é traduzido aqui. O mapa é preenchido pelo
-// fetchPacientes; se faltar, busca no banco (a RLS só devolve pacientes
-// aos quais o usuário está vinculado). Retorna null se não achar.
 const pacienteDbIds = new Map();
 
 async function dbIdDoPaciente(codigo) {
@@ -121,18 +123,19 @@ async function dbIdDoPaciente(codigo) {
   return data.id_paciente;
 }
 
-// ---- Foto do paciente (base64) ----
+// ---- Foto (base64) ----
 const MAX_FOTO_CHARS = 500000; // ~370 KB de imagem; criar_paciente usa o mesmo limite
 
-// Aceita só data URI de imagem. Qualquer outra coisa (ex: o placeholder
-// atual dos forms) é ignorada.
+// [SEGURANÇA] Só aceita data URI de imagem raster permitida (sem SVG, que
+// pode conter script). Qualquer outra coisa é ignorada.
+const TIPOS_IMAGEM_OK = ['image/jpeg', 'image/png', 'image/webp'];
+
 function fotoDataUri(value) {
-  return typeof value === 'string' && value.startsWith('data:image/') ? value : null;
+  if (typeof value !== 'string') return null;
+  const m = /^data:(image\/[a-z+.-]+);base64,/i.exec(value);
+  return m && TIPOS_IMAGEM_OK.includes(m[1].toLowerCase()) ? value : null;
 }
 
-// Valor para uma coluna foto_path (text): undefined = não mexer (sem foto ou
-// valor que não é data URI), false = grande demais (já mostrou o alerta),
-// string = data URI pronta para gravar.
 function fotoParaBanco(value) {
   const foto = fotoDataUri(value);
   if (!foto) return undefined;
@@ -143,21 +146,13 @@ function fotoParaBanco(value) {
   return foto;
 }
 
-// ---- Recuperação de senha ----
+// ---- Exclusão de conta / recuperação de senha ----
 export async function apagarUsuario() {
   try {
-    console.log('attempt')
-    const { data, error } =
-  await supabase.functions.invoke('smart-action');
+    const { data, error } = await supabase.functions.invoke('smart-action');
 
-    if (error) {
-      Alert.alert('Erro', error.message);
-      return null;
-    }
-
-    if (!data?.success) {
-      Alert.alert('Erro', data?.error ?? 'Erro ao excluir conta.');
-      return null;
+    if (error || !data?.success) {
+      return fail('Erro ao excluir conta', error ?? { message: data?.error });
     }
 
     await clearStoredUser();
@@ -165,20 +160,27 @@ export async function apagarUsuario() {
     await supabase.auth.signOut();
 
     return true;
-
   } catch (error) {
     return fail('Erro ao excluir usuário', error);
   }
 }
-export async function sendRecoveryCode(email) {
-  const { error } = await supabase.auth.resetPasswordForEmail(email);
 
-  if (error) {
-    Alert.alert('Erro', error.message);
+// [SEGURANÇA] Resposta sempre igual, exista o e-mail ou não (evita
+// enumeração de usuários).
+export async function sendRecoveryCode(email) {
+  const erroEmail = validarEmail(email);
+  if (erroEmail) {
+    Alert.alert('Atenção', erroEmail);
     return null;
   }
 
-  Alert.alert('E-mail enviado', 'Enviamos um e-mail com instruções para redefinir sua senha.');
+  const { error } = await supabase.auth.resetPasswordForEmail(String(email).trim());
+  if (error && __DEV__) console.error('Erro na recuperação de senha', error);
+
+  Alert.alert(
+    'Verifique seu e-mail',
+    'Se o e-mail estiver cadastrado, enviaremos instruções para redefinir sua senha.'
+  );
   return true;
 }
 
@@ -189,7 +191,7 @@ export async function getStoredUser() {
     const storedData = await AsyncStorage.getItem('user');
     return storedData ? JSON.parse(storedData) : null;
   } catch (error) {
-    console.error('Erro ao ler os dados do usuário', error);
+    if (__DEV__) console.error('Erro ao ler os dados do usuário', error);
     return null;
   }
 }
@@ -204,25 +206,48 @@ export async function clearStoredUser() {
 }
 
 // ---- Cadastro ----
-// novoUsuario: { name, email, phone, pword }
-// Cria o usuário direto no supabase.auth — sem nenhuma tabela própria.
-// `name` e `phone` vão no user_metadata (options.data). Se o signUp
-// falhar (ex: e-mail já cadastrado, senha fraca), retorna null e
-// mostra o erro do próprio Supabase.
+// novoUsuario: { name, email, phone, pword, aceitouTermos }
+// [SEGURANÇA] Valida entradas, exige o aceite dos termos e registra a data
+// do consentimento no user_metadata.
 export async function registrarUsuario(novoUsuario) {
-  const { name, email, phone, pword } = novoUsuario;
+  const { email, pword, aceitouTermos } = novoUsuario;
+  const name = limparTexto(novoUsuario.name, 100);
+  const phone = String(novoUsuario.phone ?? '').trim();
+
+  const erro =
+    validarNome(name) ||
+    validarEmail(email) ||
+    validarTelefone(phone) ||
+    validarSenha(pword);
+  if (erro) {
+    Alert.alert('Atenção', erro);
+    return null;
+  }
+
+  if (!aceitouTermos) {
+    Alert.alert('Atenção', 'Aceite os Termos de Uso e a Política de Privacidade para continuar.');
+    return null;
+  }
 
   const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-    email,
+    email: String(email).trim(),
     password: pword,
     options: {
-      // foto padrão (base64) já no cadastro; vai no user_metadata
-      data: { name, phone, foto: userImg },
+      data: {
+        name,
+        phone,
+        foto: userImg,
+        consentimento_em: new Date().toISOString(),
+      },
     },
   });
 
   if (signUpError) {
-    Alert.alert('Erro', signUpError.message);
+    if (__DEV__) console.error('Erro no cadastro', signUpError);
+    Alert.alert(
+      'Erro',
+      'Não foi possível concluir o cadastro. Verifique os dados e tente novamente.'
+    );
     return null;
   }
 
@@ -242,16 +267,22 @@ export async function registrarUsuario(novoUsuario) {
 }
 
 // ---- Login ----
-// Autentica no supabase.auth e lê name/phone direto do user_metadata.
-// Se der certo, já salva o resultado em 'user' (AsyncStorage).
+// [SEGURANÇA] Mensagem genérica: não diz se o e-mail existe ou se a senha
+// está errada.
 export async function loginUsuario(email, pword) {
+  if (!email || !pword) {
+    Alert.alert('Atenção', 'Informe e-mail e senha.');
+    return null;
+  }
+
   const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-    email,
+    email: String(email).trim(),
     password: pword,
   });
 
   if (signInError) {
-    Alert.alert('Erro', signInError.message);
+    if (__DEV__) console.error('Erro no login', signInError);
+    Alert.alert('Erro', 'E-mail ou senha incorretos.');
     return null;
   }
 
@@ -263,13 +294,13 @@ export async function loginUsuario(email, pword) {
     name: authUser.user_metadata?.name ?? '',
     phone: authUser.user_metadata?.phone ?? '',
     registered: authUser.created_at,
-    // contas antigas não têm foto no metadata: cai no padrão
     foto: authUser.user_metadata?.foto ?? userImg,
   };
 
   await setStoredUser(usuario);
   return usuario;
 }
+
 // ---- Atualizar nome e foto do usuário ----
 
 export async function atualizarUsuario({ name, foto }) {
@@ -281,17 +312,27 @@ export async function atualizarUsuario({ name, foto }) {
       return null;
     }
 
+    if (name !== undefined && name !== null) {
+      const erroNome = validarNome(name);
+      if (erroNome) {
+        Alert.alert('Atenção', erroNome);
+        return null;
+      }
+    }
+
+    // [SEGURANÇA] foto nova só se for data URI permitido e de tamanho aceitável;
+    // caso contrário mantém a atual.
+    const fotoNova = foto != null ? fotoParaBanco(foto) : undefined;
+    if (fotoNova === false) return null;
+
     const { data, error } = await supabase.auth.updateUser({
       data: {
-        name: name ?? usuarioAtual.name,
-        foto: foto ?? usuarioAtual.foto ?? userImg,
+        name: name != null ? limparTexto(name, 100) : usuarioAtual.name,
+        foto: fotoNova ?? usuarioAtual.foto ?? userImg,
       },
     });
 
-    if (error) {
-      Alert.alert('Erro', error.message);
-      return null;
-    }
+    if (error) return fail('Erro ao atualizar usuário', error);
 
     const authUser = data.user;
 
@@ -302,18 +343,13 @@ export async function atualizarUsuario({ name, foto }) {
     };
 
     await setStoredUser(usuarioAtualizado);
-
     return usuarioAtualizado;
-
   } catch (error) {
     return fail('Erro ao atualizar usuário', error);
   }
 }
+
 // ---- Logout ----
-// Limpa o 'user' do AsyncStorage ANTES de encerrar a sessão de auth: a tela
-// de login (e a splash) restauram o usuário salvo ao abrir, então se o
-// storage ainda tivesse o usuário (signOut é de rede e demora), o login
-// automático logava de volta e era preciso sair duas vezes.
 export async function logoutUsuario() {
   await clearStoredUser();
   pacienteDbIds.clear();
@@ -337,7 +373,6 @@ const PACIENTES_SELECT = `
   )
 `;
 
-// Linha do banco (+ tabelas filhas) -> formato que as telas usam.
 function mapPaciente(p) {
   const dieta = first(p.dietas);
   const allergies = p.Restricoes_Alimentares ?? [];
@@ -372,10 +407,10 @@ function mapPaciente(p) {
       : null;
 
   return {
-    id: p.codigo, // o id do app é o código de conexão (mostre-o para compartilhar)
+    id: p.codigo,
     name: p.Nome_paciente,
     birthDate: toBrDate(p.Data_Nascimento),
-    foto: p.foto_path ?? null, // data URI base64 (coluna foto_path, text)
+    foto: p.foto_path ?? null,
     conditions: p.Condicoes_Cronicas ?? [],
     bloodType: p.Tipo_Sanguineo ?? '',
     weight: p.Peso != null ? `${p.Peso} kg` : '',
@@ -392,7 +427,8 @@ function mapPaciente(p) {
   };
 }
 
-// Todos os pacientes vinculados ao usuário, já com as listas.
+// NOTA: a RLS do banco deve filtrar por auth.uid(); o userId enviado pelo
+// cliente aqui é só um filtro de conveniência e NÃO deve ser confiado.
 export async function fetchPacientes(userId) {
   const { data, error } = await supabase
     .from('usuario_paciente')
@@ -407,16 +443,15 @@ export async function fetchPacientes(userId) {
   return rows.map(mapPaciente);
 }
 
-// output: { name, age ('dd/mm/aaaa'), conditions, restrictions, bloodType }
-// Chama a RPC criar_paciente (insere o paciente e já vincula ao usuário
-// logado). Retorna o `codigo` do paciente criado (é o id dele no app), ou null.
-// output.foto: data URI base64 (ver components/pickPhoto.js); outro formato é ignorado.
+// output: { name, age ('dd/mm/aaaa'), conditions, restrictions, bloodType, foto }
 export async function criarPaciente(output) {
-  const nascimento = output.age ? toIsoDate(output.age) : null;
-  if (output.age && !nascimento) {
-    Alert.alert('Atenção', 'Data de nascimento inválida. Use dd/mm/aaaa.');
+  const nome = limparTexto(output.name, 100);
+  const erro = validarNome(nome) || validarDataBr(output.age);
+  if (erro) {
+    Alert.alert('Atenção', erro);
     return null;
   }
+  const nascimento = output.age ? toIsoDate(output.age) : null;
 
   const foto = fotoDataUri(output.foto);
   if (foto && foto.length > MAX_FOTO_CHARS) {
@@ -425,11 +460,11 @@ export async function criarPaciente(output) {
   }
 
   const { data, error } = await supabase.rpc('criar_paciente', {
-    p_nome: output.name.trim(),
+    p_nome: nome,
     p_nascimento: nascimento,
     p_condicoes: toArray(output.conditions),
     p_restricoes: toArray(output.restrictions),
-    p_tipo_sanguineo: output.bloodType?.trim() || null,
+    p_tipo_sanguineo: limparTexto(output.bloodType, 10) || null,
     p_foto: foto,
   });
 
@@ -437,23 +472,28 @@ export async function criarPaciente(output) {
   return data; // codigo
 }
 
-// Nome/nascimento/condições/tipo sanguíneo só mudam se preenchidos;
-// restrições (alergias) sempre substituem.
 export async function atualizarPaciente(id, output) {
   const patch = { Restricoes_Alimentares: toArray(output.restrictions) };
 
-  if (output.name?.trim()) patch.Nome_paciente = output.name.trim();
-  if (output.age) {
-    const nascimento = toIsoDate(output.age);
-    if (!nascimento) {
-      Alert.alert('Atenção', 'Data de nascimento inválida. Use dd/mm/aaaa.');
+  if (output.name?.trim()) {
+    const erroNome = validarNome(output.name);
+    if (erroNome) {
+      Alert.alert('Atenção', erroNome);
       return null;
     }
-    patch.Data_Nascimento = nascimento;
+    patch.Nome_paciente = limparTexto(output.name, 100);
+  }
+  if (output.age) {
+    const erroData = validarDataBr(output.age);
+    if (erroData) {
+      Alert.alert('Atenção', erroData);
+      return null;
+    }
+    patch.Data_Nascimento = toIsoDate(output.age);
   }
   const conditions = toArray(output.conditions);
   if (conditions.length) patch.Condicoes_Cronicas = conditions;
-  if (output.bloodType?.trim()) patch.Tipo_Sanguineo = output.bloodType.trim();
+  if (output.bloodType?.trim()) patch.Tipo_Sanguineo = limparTexto(output.bloodType, 10);
 
   const foto = fotoDataUri(output.foto);
   if (foto) {
@@ -479,20 +519,27 @@ export async function atualizarPaciente(id, output) {
   return true;
 }
 
-// Conecta o usuário logado a um paciente existente pelo `codigo` de convite.
-// Retorna { success, id?, error? } (formato que ConnectPacientF espera).
+// [SEGURANÇA] Mensagem genérica para código inválido/sem acesso. O banco
+// (RPC) deve limitar tentativas para dificultar adivinhação de códigos.
 export async function conectarPaciente(codigo) {
-  const { error } = await supabase.rpc('conectar_paciente', { p_codigo: codigo });
-  if (error) return { success: false, error: error.message };
+  const erro = validarCodigo(codigo);
+  if (erro) return { success: false, error: erro };
+
+  const { error } = await supabase.rpc('conectar_paciente', { p_codigo: String(codigo).trim() });
+  if (error) {
+    if (__DEV__) console.error('Erro ao conectar paciente', error);
+    return { success: false, error: 'Código inválido ou sem acesso.' };
+  }
   return { success: true, id: String(codigo).trim().toUpperCase() };
 }
 
 export async function salvarPeso(id, weight) {
-  const peso = toNumberOrNull(weight);
-  if (peso === null) {
-    Alert.alert('Atenção', 'Informe um peso válido.');
+  const erro = validarPeso(weight);
+  if (erro) {
+    Alert.alert('Atenção', erro);
     return null;
   }
+  const peso = toNumberOrNull(weight);
   const { data, error } = await supabase
     .from('Pacientes')
     .update({ Peso: peso })
@@ -504,14 +551,19 @@ export async function salvarPeso(id, weight) {
   return `${data.Peso} kg`;
 }
 
-// Retorna { hour, bpm } no formato do histórico do app.
 export async function registrarBatimento(id, bpm) {
+  const erro = validarBpm(bpm);
+  if (erro) {
+    Alert.alert('Atenção', erro);
+    return null;
+  }
+
   const dbId = await dbIdDoPaciente(id);
   if (!dbId) return null;
 
   const { data, error } = await supabase
     .from('batimentos')
-    .insert({ id_paciente_fk: dbId, bpm })
+    .insert({ id_paciente_fk: dbId, bpm: Number(bpm) })
     .select()
     .single();
 
@@ -519,18 +571,16 @@ export async function registrarBatimento(id, bpm) {
   return { hour: formatHour(new Date(data.medido_em)), bpm: data.bpm };
 }
 
-// ---- Listas do paciente (medicamentos, laudos, tarefas, relatórios, check-ins) ----
-// toRow: app -> banco (undefined = não alterar). fromRow: banco -> app.
-// `foto` (medicamentos) vai como data URI base64 em foto_path (text).
+// ---- Listas do paciente ----
 
 const LISTS = {
   medicines: {
     table: 'medicamentos',
     toRow: (e) => ({
-      nome: e.name,
+      nome: limparTexto(e.name, 100),
       inicio: e.start ? toIsoDate(e.start) : undefined,
-      tratamento: e.treatment,
-      frequencia: e.frequency,
+      tratamento: e.treatment != null ? limparTexto(e.treatment, 300) : undefined,
+      frequencia: e.frequency != null ? limparTexto(e.frequency, 100) : undefined,
       foto_path: fotoParaBanco(e.foto),
     }),
     fromRow: (r) => ({
@@ -545,9 +595,9 @@ const LISTS = {
   laudos: {
     table: 'laudos',
     toRow: (e) => ({
-      nome: e.name,
+      nome: limparTexto(e.name, 150),
       data: e.date ? toIsoDate(e.date) : undefined,
-      medico: e.doctor,
+      medico: e.doctor != null ? limparTexto(e.doctor, 100) : undefined,
       arquivo_path: e.file,
     }),
     fromRow: (r) => ({
@@ -562,8 +612,8 @@ const LISTS = {
     table: 'tarefas',
     toRow: (e) => ({
       tipo: e.type ?? 'task',
-      nome: e.name,
-      descricao: e.desc,
+      nome: limparTexto(e.name, 150),
+      descricao: e.desc != null ? limparTexto(e.desc, 500) : undefined,
       data: e.date ? toIsoDate(e.date) : undefined,
       hora: e.time,
       concluida: e.completed,
@@ -587,7 +637,7 @@ const LISTS = {
   reports: {
     table: 'relatorios',
     toRow: (e) => ({
-      titulo: e.title,
+      titulo: limparTexto(e.title, 150),
       data: e.date ? toIsoDate(e.date) : undefined,
       corpo: e.body,
       notas: e.notes,
@@ -620,14 +670,13 @@ const LISTS = {
   },
 };
 
-// Insere (existingId = null) ou atualiza (existingId = uuid) um item de
-// lista do paciente. Retorna o item já no formato do app, ou null.
 export async function saveListItem(field, pacienteId, entry, existingId = null) {
   const cfg = LISTS[field];
+  if (!cfg) return fail(`Lista inválida (${field})`, { message: 'Lista inválida' });
+
   const row = clean(cfg.toRow(entry));
   if (row.foto_path === false) return null; // foto grande demais
 
-  // `pacienteId` é o código do paciente; as tabelas filhas usam id_paciente
   let query;
   if (existingId) {
     query = supabase.from(cfg.table).update(row).eq('id', existingId);
@@ -650,8 +699,6 @@ export async function setTarefaConcluida(id, concluida) {
 
 // ---- Dieta ----
 
-// metas: { calories, carbs, protein, lipids, water } — todas opcionais;
-// só as preenchidas são gravadas (upsert em dietas, chave id_paciente_fk).
 export async function salvarMetasDieta(pacienteId, metas) {
   const campos = {
     calorias_meta: toNonNegInt(metas.calories),
@@ -683,11 +730,9 @@ export async function salvarMetasDieta(pacienteId, metas) {
   return true;
 }
 
-// Soma `ml` de água ao consumo de hoje (uma linha nova em dieta_registros).
 export async function registrarAgua(pacienteId, ml) {
   const quantidade = toNonNegInt(ml);
   if (!quantidade) {
-    // undefined, 0 ou NaN
     Alert.alert('Atenção', 'Informe a quantidade de água em ml (número inteiro maior que 0).');
     return null;
   }
@@ -705,8 +750,6 @@ export async function registrarAgua(pacienteId, ml) {
   return true;
 }
 
-// Registra uma refeição de hoje (uma linha nova em dieta_registros) com as
-// calorias e macros informados; todos opcionais, mas ao menos um é exigido.
 export async function registrarRefeicao(pacienteId, { calories, carbs, protein, lipids }) {
   const campos = {
     calorias: toNonNegInt(calories),
@@ -739,9 +782,6 @@ export async function registrarRefeicao(pacienteId, { calories, carbs, protein, 
   return true;
 }
 
-// Alergias ficam em Pacientes.Restricoes_Alimentares (fonte única);
-// intolerâncias em dietas.intolerancias. Texto separado por vírgula ou
-// array; lista vazia limpa o campo.
 export async function salvarRestricoesDieta(pacienteId, { allergies, intolerances }) {
   const id = await dbIdDoPaciente(pacienteId);
   if (!id) return null;
@@ -781,7 +821,6 @@ const mapProduto = (r) => ({
   foto: r.foto_path ?? null,
 });
 
-// Lista (com 0 ou 1 item, pois o app assume um estoque por usuário).
 export async function fetchEstoques(userId) {
   const { data, error } = await supabase
     .from('estoque_usuarios')
@@ -803,13 +842,19 @@ export async function fetchEstoques(userId) {
 }
 
 export async function saveProduto(estoqueId, entry, existingId = null) {
+  const quantidade = parseInt(entry.quantity, 10) || 0;
+  if (quantidade < 0 || quantidade > 100000) {
+    Alert.alert('Atenção', 'Informe uma quantidade válida.');
+    return null;
+  }
+
   const row = clean({
-    nome: entry.name,
-    quantidade: parseInt(entry.quantity, 10) || 0,
+    nome: limparTexto(entry.name, 100),
+    quantidade,
     ultima_aquisicao: entry.lastAcquisition ? toIsoDate(entry.lastAcquisition) : undefined,
     foto_path: fotoParaBanco(entry.foto),
   });
-  if (row.foto_path === false) return null; // foto grande demais
+  if (row.foto_path === false) return null;
 
   const query = existingId
     ? supabase.from('produtos').update(row).eq('id', existingId)
@@ -821,22 +866,26 @@ export async function saveProduto(estoqueId, entry, existingId = null) {
 }
 
 export async function criarEstoque(nome) {
-  const { data, error } = await supabase.rpc('criar_estoque', { p_nome: nome?.trim() || null });
+  const { data, error } = await supabase.rpc('criar_estoque', {
+    p_nome: limparTexto(nome, 100) || null,
+  });
   if (error) return fail('Erro ao criar estoque', error);
   return data; // uuid
 }
 
-// Conecta ao estoque existente pelo `codigo`. Retorna { success, id?, error? }.
 export async function conectarEstoque(codigo) {
-  const { data, error } = await supabase.rpc('conectar_estoque', { p_codigo: codigo });
-  if (error) return { success: false, error: error.message };
+  const erro = validarCodigo(codigo);
+  if (erro) return { success: false, error: erro };
+
+  const { data, error } = await supabase.rpc('conectar_estoque', { p_codigo: String(codigo).trim() });
+  if (error) {
+    if (__DEV__) console.error('Erro ao conectar estoque', error);
+    return { success: false, error: 'Código inválido ou sem acesso.' };
+  }
   return { success: true, id: data };
 }
 
-// ---- Desconectar / remover (RPCs; ver desconectar.sql) ----
-// desconectar_*: só remove o vínculo do usuário. remover_*: apaga o registro e
-// os dados, mas o banco só permite se o usuário for o único conectado.
-// Todas retornam true, ou null (com alert) se falharem.
+// ---- Desconectar / remover (RPCs) ----
 
 export async function desconectarPaciente(codigo) {
   const { error } = await supabase.rpc('desconectar_paciente', { p_codigo: codigo });

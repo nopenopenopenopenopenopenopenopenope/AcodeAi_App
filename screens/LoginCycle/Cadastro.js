@@ -8,25 +8,38 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Dimensions
+  Dimensions,
+  Modal,
 } from 'react-native';
 import React, { useEffect } from 'react';
 import { getStoredUser, registrarUsuario } from '../../components/storageFuncs';
+import {
+  limparTexto,
+  validarNome,
+  validarEmail,
+  validarTelefone,
+  validarSenha,
+} from '../../components/validacao';
+import { TERMOS_DE_USO, POLITICA_PRIVACIDADE } from '../../components/termosTexto';
 import { Feather } from '@expo/vector-icons';
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const prototypeHeight = Dimensions.get('window').height;
 const prototypeWidth = Dimensions.get('window').width;
+
 export default function Cadastro({ navigation, onAuthenticated }) {
   const [name, setName] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [phone, setPhone] = React.useState('');
   const [pword, setPword] = React.useState('');
-  const [loading,setLoading] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
   const [confirmPword, setConfirmPword] = React.useState('');
   const [errado, setErrado] = React.useState(false);
-  const [erro, setErro] = React.useState(false);
+  const [erro, setErro] = React.useState('');
   const [showPword, setShowPword] = React.useState(false);
+  // aceite dos Termos de Uso e da Política de Privacidade
+  const [aceitou, setAceitou] = React.useState(false);
+  // qual texto está aberto no modal: null | 'termos' | 'privacidade'
+  const [modal, setModal] = React.useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -39,64 +52,52 @@ export default function Cadastro({ navigation, onAuthenticated }) {
     fetchData();
   }, []);
 
-  async function cadastrar() {
-    setLoading(true)
-    setErro(null);
+  function mostrarErro(msg) {
+    setErro(msg);
     setErrado(true);
+    setTimeout(() => setErrado(false), 3000);
+    setLoading(false);
+  }
 
-    if (!name || !email || !phone || !pword || !confirmPword) {
-      setErro('Todos os campos devem ser preenchidos');
-      setTimeout(() => {
-        setErrado(false);
-      }, 2000);
-      setLoading(false)
-      return;
+  async function cadastrar() {
+    if (loading) return;
+    setLoading(true);
+    setErrado(false);
+
+    const nomeLimpo = limparTexto(name, 100);
+
+    if (!nomeLimpo || !email.trim() || !phone.trim() || !pword || !confirmPword) {
+      return mostrarErro('Todos os campos devem ser preenchidos');
     }
 
-    if (!EMAIL_REGEX.test(email)) {
-      setErro('E-mail inválido');
-      setTimeout(() => {
-        setErrado(false);
-      }, 2000);
-      setLoading(false)
-      return;
-    }
-
-    if (pword.length < 6) {
-      setErro('Sua senha deve possuir pelo menos 6 caracteres');
-      setTimeout(() => {
-        setErrado(false);
-      }, 2000);
-      setLoading(false)
-      return;
-    }
+    // Validação de formato (experiência do usuário). A garantia real fica
+    // no Supabase (política de senha, RLS e constraints).
+    const erroCampo =
+      validarNome(nomeLimpo) ||
+      validarEmail(email) ||
+      validarTelefone(phone) ||
+      validarSenha(pword);
+    if (erroCampo) return mostrarErro(erroCampo);
 
     if (pword !== confirmPword) {
-      setErro('As senhas não coincidem');
-      setTimeout(() => {
-        setErrado(false);
-      }, 2000);
-      setLoading(false)
-      return;
+      return mostrarErro('As senhas não coincidem');
+    }
+
+    if (!aceitou) {
+      return mostrarErro('Aceite os Termos de Uso e a Política de Privacidade para continuar');
     }
 
     try {
-      const novoUsuario = {
-        name,
-        email,
-        phone,
+      const usuarioCriado = await registrarUsuario({
+        name: nomeLimpo,
+        email: email.trim(),
+        phone: phone.trim(),
         pword,
-        registered: [],
-      };
-      const usuarioCriado = await registrarUsuario(novoUsuario);
+        aceitouTermos: aceitou,
+      });
 
       if (!usuarioCriado) {
-        setErro('Não foi possível concluir o cadastro');
-        setTimeout(() => {
-          setErrado(false);
-        }, 2000);
-        setLoading(false)
-        return;
+        return mostrarErro('Não foi possível concluir o cadastro');
       }
 
       // Limpa os campos
@@ -105,19 +106,18 @@ export default function Cadastro({ navigation, onAuthenticated }) {
       setPhone('');
       setPword('');
       setConfirmPword('');
+      setAceitou(false);
       setErrado(false);
+      setLoading(false);
 
       navigation.navigate('login', { pword: pword });
     } catch (error) {
-      setErro('Novo Erro ao salvar dados');
-      console.log(error);
-      setTimeout(() => {
-        setErrado(false);
-      }, 2000);
-      return;
+      if (__DEV__) console.log(error);
+      mostrarErro('Erro ao salvar dados');
     }
-    setLoading(false)
   }
+
+  const botaoDesabilitado = loading || !aceitou;
 
   return (
     <KeyboardAvoidingView
@@ -141,6 +141,7 @@ export default function Cadastro({ navigation, onAuthenticated }) {
                 setName(text);
               }}
               autoComplete="name"
+              maxLength={100}
             />
           </View>
 
@@ -157,6 +158,7 @@ export default function Cadastro({ navigation, onAuthenticated }) {
                 setEmail(text);
               }}
               autoComplete="email"
+              maxLength={254}
             />
           </View>
 
@@ -165,13 +167,14 @@ export default function Cadastro({ navigation, onAuthenticated }) {
             <TextInput
               keyboardType="phone-pad"
               style={styles.input}
-              placeholder="(00) 9 000-0000"
+              placeholder="(00) 9 0000-0000"
               placeholderTextColor="#B3B3B3"
               value={String(phone)}
               onChangeText={(text) => {
                 setPhone(text);
               }}
               autoComplete="tel"
+              maxLength={20}
             />
           </View>
 
@@ -189,11 +192,15 @@ export default function Cadastro({ navigation, onAuthenticated }) {
                   setPword(text);
                 }}
                 autoComplete="new-password"
+                maxLength={72}
               />
               <TouchableOpacity style={styles.eyeButton} onPress={() => setShowPword(!showPword)}>
                 <Feather name={showPword ? 'eye-off' : 'eye'} size={18} color="#808080" />
               </TouchableOpacity>
             </View>
+            <Text style={styles.dica}>
+              Mínimo de 8 caracteres, com letra maiúscula, minúscula e número.
+            </Text>
           </View>
 
           <View style={styles.item}>
@@ -210,6 +217,7 @@ export default function Cadastro({ navigation, onAuthenticated }) {
                   setConfirmPword(text);
                 }}
                 autoComplete="new-password"
+                maxLength={72}
               />
               <TouchableOpacity style={styles.eyeButton} onPress={() => setShowPword(!showPword)}>
                 <Feather name={showPword ? 'eye-off' : 'eye'} size={18} color="#808080" />
@@ -218,12 +226,38 @@ export default function Cadastro({ navigation, onAuthenticated }) {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.button} onPress={() => cadastrar() } disabled={loading}>
-          <Text style={{ color: '#F5F5F5' }}>Cadastrar-se</Text>
+        {/* Aceite dos termos */}
+        <View style={styles.termosRow}>
+          <TouchableOpacity
+            onPress={() => setAceitou(!aceitou)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: aceitou }}
+            accessibilityLabel="Aceitar os Termos de Uso e a Política de Privacidade"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Feather name={aceitou ? 'check-square' : 'square'} size={22} color="#36A06F" />
+          </TouchableOpacity>
+          <Text style={styles.termosText}>
+            Li e aceito os{' '}
+            <Text style={styles.loginLink} onPress={() => setModal('termos')}>
+              Termos de Uso
+            </Text>{' '}
+            e a{' '}
+            <Text style={styles.loginLink} onPress={() => setModal('privacidade')}>
+              Política de Privacidade
+            </Text>
+            .
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.button, botaoDesabilitado && styles.buttonDisabled]}
+          onPress={() => cadastrar()}
+          disabled={botaoDesabilitado}>
+          <Text style={{ color: '#F5F5F5' }}>{loading ? 'Cadastrando...' : 'Cadastrar-se'}</Text>
         </TouchableOpacity>
 
         <View style={styles.loginRow}>
-          <Text style={styles.loginText}>Já possuí uma conta? </Text>
+          <Text style={styles.loginText}>Já possui uma conta? </Text>
           <TouchableOpacity onPress={() => navigation.navigate('login')}>
             <Text style={styles.loginLink}>Login</Text>
           </TouchableOpacity>
@@ -231,6 +265,26 @@ export default function Cadastro({ navigation, onAuthenticated }) {
 
         {errado && <Text style={styles.errorText}>{erro}</Text>}
       </ScrollView>
+
+      {/* Modal com o texto completo */}
+      <Modal
+        visible={modal !== null}
+        animationType="slide"
+        onRequestClose={() => setModal(null)}>
+        <View style={styles.modalContainer}>
+          <Text style={styles.modalTitle}>
+            {modal === 'termos' ? 'Termos de Uso' : 'Política de Privacidade'}
+          </Text>
+          <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator>
+            <Text style={styles.modalText}>
+              {modal === 'termos' ? TERMOS_DE_USO : POLITICA_PRIVACIDADE}
+            </Text>
+          </ScrollView>
+          <TouchableOpacity style={styles.button} onPress={() => setModal(null)}>
+            <Text style={{ color: '#F5F5F5' }}>Fechar</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -241,7 +295,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
   },
   scrollContent: {
-    height:'100%',
+    minHeight: '100%',
     justifyContent:'center',
     padding: 16,
     paddingTop: 32,
@@ -275,6 +329,10 @@ const styles = StyleSheet.create({
     padding: 8,
     backgroundColor: '#FFFFFF',
   },
+  dica: {
+    fontSize: 12,
+    color: '#808080',
+  },
   passwordRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -286,12 +344,26 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 10,
   },
+  termosRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 16,
+  },
+  termosText: {
+    flex: 1,
+    color: '#4D4D4D',
+    fontSize: 13,
+  },
   button: {
     backgroundColor: '#36A06F',
     borderRadius: 8,
     padding: 10,
     alignItems: 'center',
     marginTop: 20,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
   loginRow: {
     flexDirection: 'row',
@@ -310,5 +382,31 @@ const styles = StyleSheet.create({
     color: '#B34747',
     textAlign: 'center',
     marginTop: 16,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+    padding: 16,
+    paddingTop: 48,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#36A06F',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  modalScroll: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D9D9D9',
+    padding: 12,
+  },
+  modalText: {
+    color: '#333333',
+    fontSize: 14,
+    lineHeight: 21,
   },
 });
