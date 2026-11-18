@@ -1,3 +1,51 @@
+/*
+============================================================================================================================================================================================================================================================================================================================================================================================================
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+============================================================================================================================================================================================================================================================================================================================================================================================================
+LISTA DE MUDANÇAS / A FAZER / TESTES:
+
+Testar:
+  tela de cadastro:
+    ver se a logo está com o tamanho correto
+    verificar as proporções do elemento de termos de uso
+    ver se está bom o lugar novo dos erros
+  tela de estoque: 
+    ver se funciona criar o estoque agr, pq n sei se a mudança funciona mesmo
+  Navegação:
+    verificar se o novo estilo funciona
+
+Corrigir:
+  tela de inicio:
+    os eventos não estão aparecendo na tela de inicio
+  tela de paciente:
+    os laudos não m=pedem ser enviados incompletos, isso inclui os pdfs
+  tela de estoque:
+    adicionar por lista não funciona
+
+Completar:
+  tela de paciente:
+    criar elemento de historico de pressão/ bpm e peso, e conectar aos botões
+
+Fazer:
+  tela de relatorios:
+    fazer um botão / ao clicar o elemento abrir o relatorio completo, e adiucionar um para editar, e um para apagar
+  tela de remedios:
+    fazer a frequencia ficar melhor, usando horarios
+    fazer um check para remedios usados, para evitar usar duas vezes
+  tela de agenda:
+    fazer opção para adicionar evento a agenda do cellular pessoal
+    adicionar um modo de ver o historico, para ver coisas antigas
+  tela de estoque:
+    tirar o item individual do primeiro formulario, tirar icone de lá, e deixar um form individual para editar item individual]
+    adicionar botões de edição mais facil de quantidade(+ / -)
+  tela de paciente: 
+    adicionar sistema de 'admin', que é o criador do paciente, ele pode remover a conexão entre um usuario e o paciente
+============================================================================================================================================================================================================================================================================================================================================================================================================
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+============================================================================================================================================================================================================================================================================================================================================================================================================    
+*/
+
+
 import {
   StyleSheet,
   Text,
