@@ -378,7 +378,7 @@ export default function App() {
 
   // Cria um estoque novo no banco, vazio, já conectado ao usuário atual.
   const createStock = async (output) => {
-    const id = await criarEstoque(output?.name);
+    const id = await criarEstoque();
     if (!id) return;
     await loadEstoques(profile.id);
     closeForm();
@@ -594,7 +594,7 @@ export default function App() {
   const disconnectPacient = async (id) => {
     const ok = await confirmar(
       'Desconectar paciente',
-      `Você deixará de ter acesso a ${nomeDoPaciente(id)}. Os dados continuam salvos e você pode reconectar pelo código.`,
+      `Você deixará de ter acesso a ${nomeDoPaciente(id)}. Os dados continuam salvos e você pode reconectar pelo id dele no app, caso anote antes.`,
       'Desconectar'
     );
     if (!ok) return;
@@ -620,7 +620,7 @@ export default function App() {
   const disconnectStock = async () => {
     const ok = await confirmar(
       'Desconectar do estoque',
-      'Você deixará de ter acesso a este estoque. Ele continua existindo para os outros usuários e você pode reconectar pelo código.',
+      'Você deixará de ter acesso a este estoque. Ele continua existindo para os outros usuários e você pode reconectar pelo código, caso anote antes.',
       'Desconectar'
     );
     if (!ok) return;

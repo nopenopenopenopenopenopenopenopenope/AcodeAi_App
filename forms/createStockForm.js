@@ -14,7 +14,7 @@ export default function CreateStockF({ style, closeForm, useOutput, initialData 
 
   const formOutput = () => {
     const output = {
-      name: nome,
+      name: 'nome',
     };
 
     useOutput(output);
@@ -24,21 +24,6 @@ export default function CreateStockF({ style, closeForm, useOutput, initialData 
     <Animated.View style={[styles.container, style]}>
       <TouchableOpacity style={[styles.container, style]} onPress={closeForm}>
         <TouchableOpacity style={styles.form} activeOpacity={1}>
-          <View style={styles.item}>
-            <Text>Nome do estoque (opcional)</Text>
-            <TextInput
-              keyboardType="default"
-              style={styles.input}
-              placeholder="Ex: “Estoque da Samantha” "
-              placeholderTextColor="#B3B3B3"
-              value={String(nome)}
-              onChangeText={(text) => {
-                setNome(text);
-              }}
-              autoComplete="none"
-            />
-          </View>
-
           <View style={styles.item}>
             <TouchableOpacity style={styles.button} onPress={formOutput}>
               <Text style={{ color: '#F5F5F5' }}>Criar estoque</Text>

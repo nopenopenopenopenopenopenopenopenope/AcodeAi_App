@@ -92,6 +92,20 @@ export default function PacientF({ style, closeForm, useOutput, initialData }) {
             />
           </View>
           <View style={styles.item}>
+            {/*adicionar funcionalidade */}
+            <Text>Tipo sanguíneo</Text>
+            <TextInput
+              keyboardType="text"
+              style={styles.input}
+              placeholder=""
+              placeholderTextColor="#B3B3B3"
+              value={}
+              onChangeText={(text) => {
+              }}
+              autoComplete="none"
+            />
+          </View>
+          <View style={styles.item}>
             <DateField
               value={birthDate}
               onChange={setBirthdate}
@@ -99,6 +113,7 @@ export default function PacientF({ style, closeForm, useOutput, initialData }) {
               placeholder="Escolher Data de Nascimento"
             />
           </View>
+          
           <View style={styles.item}>
             <TouchableOpacity style={styles.button} onPress={pickPhoto}>
               <Text style={{ color: '#F5F5F5' }}>

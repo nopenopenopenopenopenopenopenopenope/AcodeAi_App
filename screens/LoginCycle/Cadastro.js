@@ -12,6 +12,7 @@ import {
   Modal,
 } from 'react-native';
 import React, { useEffect } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getStoredUser, registrarUsuario } from '../../components/storageFuncs';
 import {
   limparTexto,
@@ -124,7 +125,7 @@ export default function Cadastro({ navigation, onAuthenticated }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <Image style={[styles.logotipo,{minWidth:prototypeWidth / 2,height: prototypeHeight / 7}]} source={require('../../assets/Logo.png')} />
+        <Image resizeMode={'contain'} style={[styles.logotipo,{minWidth:prototypeWidth / 2,height: prototypeHeight / 7}]} source={require('../../assets/Logo.png')} />
         <Text style={styles.textoBemVindo}>Seja bem vindo!</Text>
         <Text style={styles.subtextoBemVindo}>Crie sua conta para continuar</Text>
 
@@ -225,7 +226,7 @@ export default function Cadastro({ navigation, onAuthenticated }) {
             </View>
           </View>
         </View>
-
+        {errado && <Text style={styles.errorText}>{erro}</Text>}
         {/* Aceite dos termos */}
         <View style={styles.termosRow}>
           <TouchableOpacity
@@ -263,7 +264,7 @@ export default function Cadastro({ navigation, onAuthenticated }) {
           </TouchableOpacity>
         </View>
 
-        {errado && <Text style={styles.errorText}>{erro}</Text>}
+        
       </ScrollView>
 
       {/* Modal com o texto completo */}
@@ -271,7 +272,7 @@ export default function Cadastro({ navigation, onAuthenticated }) {
         visible={modal !== null}
         animationType="slide"
         onRequestClose={() => setModal(null)}>
-        <View style={styles.modalContainer}>
+        <SafeAreaView style={styles.modalContainer} edges={['top', 'bottom', 'left', 'right']}>
           <Text style={styles.modalTitle}>
             {modal === 'termos' ? 'Termos de Uso' : 'Política de Privacidade'}
           </Text>
@@ -283,7 +284,7 @@ export default function Cadastro({ navigation, onAuthenticated }) {
           <TouchableOpacity style={styles.button} onPress={() => setModal(null)}>
             <Text style={{ color: '#F5F5F5' }}>Fechar</Text>
           </TouchableOpacity>
-        </View>
+        </SafeAreaView>
       </Modal>
     </KeyboardAvoidingView>
   );
@@ -387,7 +388,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F5F5',
     padding: 16,
-    paddingTop: 48,
   },
   modalTitle: {
     fontSize: 20,

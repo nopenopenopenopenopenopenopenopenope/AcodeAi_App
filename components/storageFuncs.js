@@ -865,9 +865,10 @@ export async function saveProduto(estoqueId, entry, existingId = null) {
   return mapProduto(data);
 }
 
-export async function criarEstoque(nome) {
+export async function criarEstoque() {
+  const numeroAleatorio = String(Math.floor(Math.random() * 90000) + 10000);
   const { data, error } = await supabase.rpc('criar_estoque', {
-    p_nome: limparTexto(nome, 100) || null,
+    p_nome: numeroAleatorio,
   });
   if (error) return fail('Erro ao criar estoque', error);
   return data; // uuid

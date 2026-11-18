@@ -2,6 +2,7 @@
 
 # The file containing the api key
 components/supabaseClient.js
+.keystore
 
 # dependencies
 node_modules/

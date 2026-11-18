@@ -220,11 +220,13 @@ export default function Info({ paciente, func }) {
           <View>
             <View style={styles.labelWithEdit}>
               <Text style={styles.sectionTitle}>Rítmo cardíaco</Text>
+              {/*fazer isso mostrar a lista completa, não adicionar algo*/}
               <TouchableOpacity onPress={() => func('heartRate', { current: paciente?.heartRate?.current })}>
                 <Feather name="plus" size={16} color="#36A06F" />
               </TouchableOpacity>
             </View>
             <View style={styles.bpmRow}>
+              {/*mudar para um historico de bpm e pressão sanguinea*/}
               <Text style={styles.bpmValue}>{paciente?.heartRate?.current}</Text>
               <Text style={styles.bpmUnit}>bpm</Text>
             </View>
@@ -247,10 +249,13 @@ export default function Info({ paciente, func }) {
         <View style={styles.statColumn}>
           <View style={styles.labelWithEdit}>
             <Text style={styles.sectionTitle}>Peso</Text>
+            
+            {/*fazer isso mostrar a lista completa, não adicionar algo*/}
             <TouchableOpacity onPress={() => func('weight', { weight: paciente?.weight })}>
-              <Feather name="edit-2" size={16} color="#36A06F" />
+              <Feather name="plus" size={16} color="#36A06F" />
             </TouchableOpacity>
           </View>
+          {/*mudar para um historico de peso*/}
           <Text style={styles.statValue}>{paciente?.weight}</Text>
         </View>
       </View>

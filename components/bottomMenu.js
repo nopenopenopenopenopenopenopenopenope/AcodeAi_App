@@ -22,22 +22,29 @@ useEffect(() => {
 
   return unsubscribe;
 }, []);
+const iconsize = prototypeWidth / 14
   return (
     <View style={[styles.container,{height:prototypeHeight / 12}]}>
     <TouchableOpacity disabled={route === "home"} onPress={() => navigation.navigate('home')}>
-    <FontAwesome5 name={"home"} size={prototypeWidth / 11} color='#fff' style={{opacity: route === "home"? 0.6:1}}/>
+    <FontAwesome5 name={"home"} size={iconsize} color='#fff' style={{opacity: route === "home"? 0.6:1}}/>
     </TouchableOpacity>
     <TouchableOpacity disabled={route === "medicine"} onPress={() => navigation.navigate('medicine')}>
-    <FontAwesome5 name={"pills"} size={prototypeWidth / 11} color='#fff' style={{opacity: route === "medicine"? 0.6:1}}/>
+    <FontAwesome5 name={"pills"} size={iconsize} color='#fff' style={{opacity: route === "medicine"? 0.6:1}}/>
     </TouchableOpacity>
     <TouchableOpacity disabled={route === "info"} onPress={() => navigation.navigate('info')}>
-    <FontAwesome5 name={"info-circle"} size={prototypeWidth / 11} color='#fff' style={{opacity: route === "info"? 0.6:1}}/>
+    <FontAwesome5 name={"info-circle"} size={iconsize} color='#fff' style={{opacity: route === "info"? 0.6:1}}/>
     </TouchableOpacity>
     <TouchableOpacity disabled={route === "calendar"} onPress={() => navigation.navigate('calendar')} >
-    <FontAwesome5 name={"calendar-alt"} size={prototypeWidth / 11} color='#fff' style={{opacity: route === "calendar"? 0.6:1}}/>
+    <FontAwesome5 name={"calendar-alt"} size={iconsize} color='#fff' style={{opacity: route === "calendar"? 0.6:1}}/>
     </TouchableOpacity>
     <TouchableOpacity disabled={route === "stock"} onPress={() => navigation.navigate('stock')}>
-    <FontAwesome5 name={"pallet"} size={prototypeWidth / 11} color='#fff' style={{opacity: route === "stock"? 0.6:1}}/>
+    <FontAwesome5 name={"pallet"} size={iconsize} color='#fff' style={{opacity: route === "stock"? 0.6:1}}/>
+    </TouchableOpacity>
+    <TouchableOpacity disabled={route === "diet"} onPress={() => navigation.navigate('diet')}>
+    <FontAwesome5 name={"cutlery"} size={iconsize} color='#fff' style={{opacity: route === "diet"? 0.6:1}}/>
+    </TouchableOpacity>
+    <TouchableOpacity disabled={route === "reports"} onPress={() => navigation.navigate('reports')}>
+    <FontAwesome5 name={"file-text"} size={iconsize} color='#fff' style={{opacity: route === "reports"? 0.6:1}}/>
     </TouchableOpacity>
     </View>
   );

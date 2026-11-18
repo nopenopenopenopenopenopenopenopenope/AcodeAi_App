@@ -82,7 +82,6 @@ export default function Profile({ navigation, profile, pacients, func, onSelectP
       <View style={styles.nameRow}>
         <Text style={styles.name}>{profile?.name}</Text>
       </View>
-      <Text style={styles.role}>{profile?.role}</Text>
 
       <View style={styles.field}>
         <View style={styles.labelRow}>

@@ -79,6 +79,62 @@ export default function CheckInF({ style, closeForm, useOutput, initialData }) {
             />
           </View>
           <View style={styles.item}>
+            {/*adicionar funcionalidade */}
+            <Text>Pressão sanguinea</Text>
+            <TextInput
+              keyboardType="number"
+              style={styles.input}
+              placeholder=""
+              placeholderTextColor="#B3B3B3"
+              value={}
+              onChangeText={(text) => {
+              }}
+              autoComplete="none"
+            />
+          </View>
+          <View style={styles.item}>
+            {/*adicionar funcionalidade */}
+            <Text>Ritmo cardiaco {'(como numero inteiro)'}</Text>
+            <TextInput
+              keyboardType="number"
+              style={styles.input}
+              placeholder=""
+              placeholderTextColor="#B3B3B3"
+              value={}
+              onChangeText={(text) => {
+              }}
+              autoComplete="none"
+            />
+          </View>
+          <View style={styles.item}>
+            {/*adicionar funcionalidade */}
+            <Text>Peso</Text>
+            <TextInput
+              keyboardType="number"
+              style={styles.input}
+              placeholder=""
+              placeholderTextColor="#B3B3B3"
+              value={}
+              onChangeText={(text) => {
+              }}
+              autoComplete="none"
+            />
+          </View>
+          <View style={styles.item}>
+            {/*adicionar funcionalidade */}
+            <Text>Pressão sanguinea</Text>
+            <TextInput
+              keyboardType="text"
+              style={styles.input}
+              placeholder=""
+              placeholderTextColor="#B3B3B3"
+              value={}
+              onChangeText={(text) => {
+              }}
+              autoComplete="none"
+            />
+          </View>
+          <View style={styles.item}>
             <Text>Observações extras</Text>
             <TextInput
               keyboardType="text"
