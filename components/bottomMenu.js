@@ -40,9 +40,11 @@ const iconsize = prototypeWidth / 14
     <TouchableOpacity disabled={route === "stock"} onPress={() => navigation.navigate('stock')}>
     <FontAwesome5 name={"pallet"} size={iconsize} color='#fff' style={{opacity: route === "stock"? 0.6:1}}/>
     </TouchableOpacity>
+    {/*
     <TouchableOpacity disabled={route === "diet"} onPress={() => navigation.navigate('diet')}>
     <FontAwesome name={"cutlery"} size={iconsize} color='#fff' style={{opacity: route === "diet"? 0.6:1}}/>
     </TouchableOpacity>
+    */}
     <TouchableOpacity disabled={route === "reports"} onPress={() => navigation.navigate('reports')}>
     <FontAwesome name={"file-text"} size={iconsize} color='#fff' style={{opacity: route === "reports"? 0.6:1}}/>
     </TouchableOpacity>
