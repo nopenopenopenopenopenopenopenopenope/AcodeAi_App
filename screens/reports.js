@@ -1,14 +1,15 @@
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
 /*
-  Reads paciente.reports and paciente.checkins (see screens/info.js for
-  the full shapes, sourced from ReportF's and CheckInF's outputs).
+  Reads paciente.reports and paciente.checkins.
+  Adiciona suporte para ver o relatório completo, editar e apagar.
 */
 
-function ReportCard({ report }) {
+function ReportCard({ report, onOpenDetail, onEdit, onDelete }) {
   return (
-    <View style={styles.card}>
+    <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={() => onOpenDetail(report)}>
       <View style={styles.iconBox}>
         <Feather name="file-text" size={32} color="#36A06F" />
       </View>
@@ -19,13 +20,23 @@ function ReportCard({ report }) {
           <Text style={styles.metaDate}>{report.date}</Text>
         </View>
         {!!report.notes && (
-          <Text style={styles.bodyText}>
+          <Text style={styles.bodyText} numberOfLines={2}>
             <Text style={styles.bodyLabel}>Observação: </Text>
             {report.notes}
           </Text>
         )}
       </View>
-    </View>
+
+      {/* Botões de Ação rápida (Editar e Apagar) */}
+      <View style={styles.actionButtonsCol}>
+        <TouchableOpacity style={styles.actionBtn} onPress={() => onEdit(report)}>
+          <Feather name="edit-2" size={16} color="#36A06F" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionBtn} onPress={() => onDelete(report.id)}>
+          <Feather name="trash-2" size={16} color="#D64545" />
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -47,38 +58,51 @@ function CheckInCard({ checkin }) {
   );
 }
 
-export default function Reports({ paciente, func }) {
+export default function Reports({ paciente, func, onDeleteReport }) {
   const reports = paciente?.reports ?? [];
   const checkins = paciente?.checkins ?? [];
+
+  // Estado para controlar o modal de visualização completa do relatório
+  const [selectedReport, setSelectedReport] = useState(null);
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.headerRow}>
         <Text style={styles.sectionTitle}>Relatórios</Text>
-        {paciente &&(
-        <TouchableOpacity onPress={() => func?.('report')}>
-          <Feather name="plus" size={26} color="#36A06F" />
-        </TouchableOpacity>
+        {paciente && (
+          <TouchableOpacity onPress={() => func?.('report')}>
+            <Feather name="plus" size={26} color="#36A06F" />
+          </TouchableOpacity>
         )}
       </View>
-       {reports.length === 0 ? (
+
+      {reports.length === 0 ? (
         !paciente ? (
           <Text style={styles.emptyText}>Nenhum paciente selecionado</Text>
         ) : (
           <Text style={styles.emptyText}>Nenhum relatório registrado</Text>
         )
       ) : (
-        reports.map((report, index) => <ReportCard key={index} report={report} />)
+        reports.map((report, index) => (
+          <ReportCard
+            key={report.id ?? index}
+            report={report}
+            onOpenDetail={(r) => setSelectedReport(r)}
+            onEdit={(r) => func('report', r)}
+            onDelete={(id) => onDeleteReport?.(id)}
+          />
+        ))
       )}
 
       <View style={[styles.headerRow, styles.headerRowSpaced]}>
         <Text style={styles.sectionTitle}>Check-ins</Text>
-        {paciente &&(
-        <TouchableOpacity onPress={() => func?.('check')}>
-          <Feather name="plus" size={26} color="#36A06F" />
-        </TouchableOpacity>
+        {paciente && (
+          <TouchableOpacity onPress={() => func?.('check')}>
+            <Feather name="plus" size={26} color="#36A06F" />
+          </TouchableOpacity>
         )}
       </View>
+
       {checkins.length === 0 ? (
         !paciente ? (
           <Text style={styles.emptyText}>Nenhum paciente selecionado</Text>
@@ -88,34 +112,56 @@ export default function Reports({ paciente, func }) {
       ) : (
         checkins.map((checkin, index) => <CheckInCard key={index} checkin={checkin} />)
       )}
+
+      {/* Modal para ver o relatório completo */}
+      <Modal
+        visible={!!selectedReport}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSelectedReport(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{selectedReport?.title}</Text>
+              <TouchableOpacity onPress={() => setSelectedReport(null)}>
+                <Feather name="x" size={24} color="#1A1A1A" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalDate}>Data: {selectedReport?.date}</Text>
+
+            <ScrollView style={styles.modalBodyScroll} showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalSubtitle}>Conteúdo do Relatório:</Text>
+              <Text style={styles.modalBodyText}>{selectedReport?.body || 'Sem conteúdo.'}</Text>
+
+              {!!selectedReport?.notes && (
+                <>
+                  <Text style={[styles.modalSubtitle, { marginTop: 12 }]}>Observações:</Text>
+                  <Text style={styles.modalBodyText}>{selectedReport?.notes}</Text>
+                </>
+              )}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.closeModalBtn}
+              onPress={() => setSelectedReport(null)}
+            >
+              <Text style={styles.closeModalBtnText}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 16,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  headerRowSpaced: {
-    marginTop: 12,
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#36A06F',
-  },
-  emptyText: {
-    fontSize: 15,
-    color: '#808080',
-    marginBottom: 16,
-  },
+  container: { flex: 1, padding: 16 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  headerRowSpaced: { marginTop: 12 },
+  sectionTitle: { fontSize: 22, fontWeight: 'bold', color: '#36A06F' },
+  emptyText: { fontSize: 15, color: '#808080', marginBottom: 16 },
   card: {
     flexDirection: 'row',
     gap: 12,
@@ -128,45 +174,54 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 2,
+    alignItems: 'center',
   },
   iconBox: {
-    width: 76,
-    height: 76,
+    width: 60,
+    height: 60,
     borderRadius: 10,
     backgroundColor: '#EDEDED',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  cardInfo: {
+  cardInfo: { flex: 1, gap: 4, justifyContent: 'center' },
+  cardTitle: { fontSize: 17, fontWeight: 'bold', color: '#36A06F' },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
+  metaLabel: { fontSize: 13, color: '#1A1A1A' },
+  metaDate: { fontSize: 13, fontWeight: 'bold', color: '#1A1A1A' },
+  bodyText: { fontSize: 13, color: '#4D4D4D' },
+  bodyLabel: { fontWeight: '600' },
+  actionButtonsCol: { gap: 8, justifyContent: 'center', paddingLeft: 4 },
+  actionBtn: { padding: 6, backgroundColor: '#F5F5F5', borderRadius: 6 },
+  
+  // Estilos do Modal
+  modalOverlay: {
     flex: 1,
-    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#36A06F',
-  },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
     alignItems: 'center',
+    padding: 20,
   },
-  metaLabel: {
-    fontSize: 14,
-    color: '#1A1A1A',
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    width: '100%',
+    maxHeight: '80%',
+    padding: 16,
+    gap: 12,
   },
-  metaDate: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#1A1A1A',
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#36A06F', flex: 1, marginRight: 8 },
+  modalDate: { fontSize: 14, color: '#808080', fontWeight: '600' },
+  modalBodyScroll: { marginVertical: 4 },
+  modalSubtitle: { fontSize: 14, fontWeight: 'bold', color: '#1A1A1A', marginBottom: 4 },
+  modalBodyText: { fontSize: 15, color: '#333333', lineHeight: 22 },
+  closeModalBtn: {
+    backgroundColor: '#36A06F',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 8,
   },
-  bodyText: {
-    fontSize: 14,
-    color: '#1A1A1A',
-  },
-  bodyLabel: {
-    fontWeight: '600',
-  },
+  closeModalBtnText: { color: '#F5F5F5', fontWeight: 'bold', fontSize: 16 },
 });

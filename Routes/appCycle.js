@@ -34,7 +34,11 @@ const AppCycle = ({
   onDisconnectStock,
   onRemoveStock,
   onRemoveMedicine,
-  onDeleteUser
+  onDeleteUser,
+  onUpdateStockQuantity,
+  onDeleteReport,
+  onRemovePacientConnection,
+  onToggleTask
 }) => {
   const prototypeHeight = Dimensions.get('window').height;
   const selectedPacient = getSelectedPacient(profilestuff, pacientstuff);
@@ -76,26 +80,30 @@ const AppCycle = ({
             {...props}
             paciente={selectedPacient}
             func={openForm}
+            currentUserId={profilestuff?.id}
+      onRemovePacientConnection={onRemovePacientConnection}
           />
         )}
       </Stack.Screen>
       <Stack.Screen name="calendar">
-        {(props) => <Calendar {...props} paciente={selectedPacient} func={openForm} />}
+        {(props) => <Calendar {...props} paciente={selectedPacient} func={openForm} onToggleTask={onToggleTask}
+/>}
       </Stack.Screen>
       <Stack.Screen name="stock">
         {(props) => (
           <Stock
             {...props}
             stock={userStock}
-            func={openForm}
-            onDisconnect={onDisconnectStock}
-            onRemove={onRemoveStock}
+      func={openForm}
+      onDisconnect={onDisconnectStock}
+      onRemove={onRemoveStock}
+      onUpdateQuantity={onUpdateStockQuantity}
           />
         )}
       </Stack.Screen>
       <Stack.Screen name="reports">
-        {(props) => <Reports {...props} paciente={selectedPacient} func={openForm} />}
-      </Stack.Screen>
+  {(props) => <Reports {...props} paciente={selectedPacient} func={openForm} onDeleteReport={onDeleteReport} />}
+</Stack.Screen>
       <Stack.Screen name="diet">
         {(props) => <Diet {...props} paciente={selectedPacient} func={openForm} />}
       </Stack.Screen>

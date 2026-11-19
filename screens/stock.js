@@ -1,23 +1,6 @@
 import { StyleSheet, Text, View, ScrollView, Image, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
-/*
-  Reads stock.products — an array of entries with the exact shape
-  StockF's formOutput() produces:
-  {
-    name: string,             // product name, from StockF's "Nome do(s) produto(s) estocado(s)"
-    quantity: string,         // e.g. "16"
-    lastAcquisition: string,  // "dd/mm/aaaa"
-    items: [],                // optional breakdown list ({ name, quantity } pairs)
-    foto: string | null,      // uri of the product's cover photo
-  }
-
-  `stock` is null until the user either creates a new one (CreateStockF,
-  opened via func('createStock')) or connects to an existing one by code
-  (ConnectStockF, opened via func('connectStock')) — a user has at most
-  one stock, but a stock can be shared by several users.
-*/
-
 function NoStock({ func }) {
   return (
     <View style={styles.noStockWrap}>
@@ -34,8 +17,14 @@ function NoStock({ func }) {
   );
 }
 
-export default function Stock({ stock, func, onDisconnect, onRemove }) {
+export default function Stock({ stock, func, onDisconnect, onRemove, onUpdateQuantity }) {
   const products = stock?.products ?? [];
+
+  const handleChangeQuantity = (product, delta) => {
+    const currentQty = parseInt(product.quantity, 10) || 0;
+    const newQty = Math.max(0, currentQty + delta); // Evita quantidade negativa
+    onUpdateQuantity?.(product, newQty);
+  };
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -55,7 +44,7 @@ export default function Stock({ stock, func, onDisconnect, onRemove }) {
         <Text style={styles.emptyText}>Nenhum produto estocado</Text>
       ) : (
         products.map((product, index) => (
-          <View key={index} style={styles.card}>
+          <View key={product.id ?? index} style={styles.card}>
             {product.foto ? (
               <Image source={{ uri: product.foto }} style={styles.thumb} />
             ) : (
@@ -63,16 +52,35 @@ export default function Stock({ stock, func, onDisconnect, onRemove }) {
                 <Feather name="package" size={28} color="#B3B3B3" />
               </View>
             )}
+            
             <View style={styles.cardInfo}>
               <Text style={styles.productName}>{product.name}</Text>
               <Text style={styles.productLine}>
-                Quantidade: {product.quantity} unidades
-              </Text>
-              <Text style={styles.productLine}>
                 Última aquisição: <Text style={styles.boldText}>{product.lastAcquisition}</Text>
               </Text>
+
+              {/* Controles rápidos de quantidade (+ / -) */}
+              <View style={styles.qtyRow}>
+                <TouchableOpacity
+                  style={styles.qtyBtn}
+                  onPress={() => handleChangeQuantity(product, -1)}
+                >
+                  <Feather name="minus" size={16} color="#1A1A1A" />
+                </TouchableOpacity>
+
+                <Text style={styles.qtyValue}>{product.quantity} un.</Text>
+
+                <TouchableOpacity
+                  style={styles.qtyBtn}
+                  onPress={() => handleChangeQuantity(product, 1)}
+                >
+                  <Feather name="plus" size={16} color="#1A1A1A" />
+                </TouchableOpacity>
+              </View>
             </View>
-            <TouchableOpacity style={styles.editButton} onPress={() => func('stock', product)}>
+
+            {/* Botão para abrir o form individual de edição */}
+            <TouchableOpacity style={styles.editButton} onPress={() => func('editStock', product)}>
               <Feather name="edit-2" size={18} color="#36A06F" />
             </TouchableOpacity>
           </View>
@@ -96,77 +104,19 @@ export default function Stock({ stock, func, onDisconnect, onRemove }) {
 const THUMB_SIZE = 90;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 16,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  stockId: {
-    fontSize: 13,
-    color: '#808080',
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#36A06F',
-  },
-  emptyText: {
-    fontSize: 15,
-    color: '#808080',
-    textAlign: 'center',
-    marginTop: 24,
-    marginBottom: 20,
-  },
-  noStockWrap: {
-    marginTop: 8,
-    gap: 12,
-  },
-  primaryButton: {
-    backgroundColor: '#36A06F',
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    color: '#F5F5F5',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: '#36A06F',
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  stockActions: {
-    gap: 12,
-    marginTop: 8,
-    marginBottom: 24,
-  },
-  dangerButton: {
-    borderWidth: 1,
-    borderColor: '#D64545',
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  dangerButtonText: {
-    color: '#D64545',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  secondaryButtonText: {
-    color: '#36A06F',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  container: { flex: 1, padding: 16 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  stockId: { fontSize: 13, color: '#808080', marginBottom: 16 },
+  title: { fontSize: 22, fontWeight: 'bold', color: '#36A06F' },
+  emptyText: { fontSize: 15, color: '#808080', textAlign: 'center', marginTop: 24, marginBottom: 20 },
+  noStockWrap: { marginTop: 8, gap: 12 },
+  primaryButton: { backgroundColor: '#36A06F', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  primaryButtonText: { color: '#F5F5F5', fontWeight: 'bold', fontSize: 16 },
+  secondaryButton: { borderWidth: 1, borderColor: '#36A06F', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  stockActions: { gap: 12, marginTop: 8, marginBottom: 24 },
+  dangerButton: { borderWidth: 1, borderColor: '#D64545', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  dangerButtonText: { color: '#D64545', fontWeight: 'bold', fontSize: 16 },
+  secondaryButtonText: { color: '#36A06F', fontWeight: 'bold', fontSize: 16 },
   card: {
     flexDirection: 'row',
     gap: 12,
@@ -180,37 +130,34 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  thumb: {
-    width: THUMB_SIZE,
-    height: THUMB_SIZE,
-    borderRadius: 8,
+  thumb: { width: THUMB_SIZE, height: THUMB_SIZE, borderRadius: 8 },
+  thumbPlaceholder: { backgroundColor: '#E6E6E6', justifyContent: 'center', alignItems: 'center' },
+  cardInfo: { flex: 1, gap: 4, paddingRight: 28, justifyContent: 'center' },
+  productName: { fontSize: 17, fontWeight: 'bold', color: '#36A06F' },
+  productLine: { fontSize: 13, color: '#4D4D4D' },
+  boldText: { fontWeight: 'bold', color: '#1A1A1A' },
+  qtyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 6,
   },
-  thumbPlaceholder: {
-    backgroundColor: '#E6E6E6',
+  qtyBtn: {
+    backgroundColor: '#E6F5EC',
+    borderWidth: 1,
+    borderColor: '#36A06F',
+    borderRadius: 6,
+    width: 28,
+    height: 28,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  cardInfo: {
-    flex: 1,
-    gap: 2,
-    paddingRight: 24,
-  },
-  productName: {
-    fontSize: 17,
+  qtyValue: {
+    fontSize: 15,
     fontWeight: 'bold',
-    color: '#36A06F',
-    marginBottom: 2,
-  },
-  productLine: {
-    fontSize: 14,
     color: '#1A1A1A',
+    minWidth: 45,
+    textAlign: 'center',
   },
-  boldText: {
-    fontWeight: 'bold',
-  },
-  editButton: {
-    position: 'absolute',
-    right: 12,
-    bottom: 12,
-  },
+  editButton: { position: 'absolute', right: 12, top: 12 },
 });

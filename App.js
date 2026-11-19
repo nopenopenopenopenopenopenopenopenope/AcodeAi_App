@@ -4,36 +4,11 @@
 ============================================================================================================================================================================================================================================================================================================================================================================================================
 LISTA DE MUDANÇAS / A FAZER / TESTES:
 
-Testar:
-  tela de estoque: 
-    ver se funciona criar o estoque agr, pq n sei se a mudança funciona mesmo
+
 
 Corrigir:
-  tela de inicio:
-    os eventos não estão aparecendo na tela de inicio
   tela de paciente:
     os laudos não m=pedem ser enviados incompletos, isso inclui os pdfs
-  tela de estoque:
-    adicionar por lista não funciona
-
-Completar:
-  tela de paciente:
-    criar elemento de historico de pressão/ bpm e peso, e conectar aos botões
-
-Fazer:
-  tela de relatorios:
-    fazer um botão / ao clicar o elemento abrir o relatorio completo, e adiucionar um para editar, e um para apagar
-  tela de remedios:
-    fazer a frequencia ficar melhor, usando horarios
-    fazer um check para remedios usados, para evitar usar duas vezes
-  tela de agenda:
-    fazer opção para adicionar evento a agenda do cellular pessoal
-    adicionar um modo de ver o historico, para ver coisas antigas
-  tela de estoque:
-    tirar o item individual do primeiro formulario, tirar icone de lá, e deixar um form individual para editar item individual]
-    adicionar botões de edição mais facil de quantidade(+ / -)
-  tela de paciente: 
-    adicionar sistema de 'admin', que é o criador do paciente, ele pode remover a conexão entre um usuario e o paciente
 ============================================================================================================================================================================================================================================================================================================================================================================================================
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ============================================================================================================================================================================================================================================================================================================================================================================================================    
@@ -74,6 +49,7 @@ import {
   removerPaciente,
   desconectarEstoque,
   removerEstoque,
+  removerRelatorio,
   removerMedicamento,
   salvarRestricoesDieta,
   fetchEstoques,
@@ -81,7 +57,9 @@ import {
   criarEstoque,
   conectarEstoque,
   atualizarUsuario,
-  apagarUsuario
+  apagarUsuario,
+  removerConexaoPaciente,
+  buscarConexoesPaciente
 } from './components/storageFuncs';
 import Splash from './Routes/splashScreen';
 import AppCycle from './Routes/appCycle';
@@ -89,13 +67,13 @@ import LoginCycle from './Routes/loginCycle';
 import { navigationRef } from './components/navigationRef';
 import CheckInF from './forms/checkInForm';
 import LaudoF from './forms/laudoForm';
+import EditStockF from './forms/editStockForm';
 import MedicineF from './forms/medicineForm';
 import PacientF from './forms/pacientForm';
 import ReportF from './forms/reportForm';
 import StockF from './forms/stockForm';
 import TaskF from './forms/taskForm';
 import profiler from './forms/profiler';
-import CreateStockF from './forms/createStockForm';
 import ConnectStockF from './forms/connectStockForm';
 import ConnectPacientF from './forms/connectPacientForm';
 import WeightF from './forms/weightForm';
@@ -218,8 +196,14 @@ export default function App() {
   // `data` is optional: pass the existing object being edited (e.g. a
   // specific medicine, a stock product) so the form opens pre-filled;
   // omit it (or pass null) to open the form blank, for adding something new.
-  const openForm = (form, data = null) => {
-    setForm(form);
+  const openForm = (formName, data = null) => {
+    // Se o usuário clicou em criar estoque, cria direto sem abrir modal
+    if (formName === 'createStock') {
+      guarded(createStock)();
+      return;
+    }
+
+    setForm(formName);
     setFormData(data);
 
     Animated.timing(op, {
@@ -269,6 +253,32 @@ export default function App() {
     return profile.selectedPacient;
   };
 
+  const updateStockQuantity = guarded(async (product, newQuantity) => {
+  if (!profile.stockId) return;
+
+  const saved = await saveProduto(
+    profile.stockId,
+    {
+      name: product.name,
+      quantity: String(newQuantity),
+      lastAcquisition: product.lastAcquisition,
+      foto: product.foto,
+    },
+    product.id
+  );
+  if (!saved) return;
+
+  setStock((prev) =>
+    prev.map((s) => {
+      if (s.id !== profile.stockId) return s;
+      return {
+        ...s,
+        products: (s.products ?? []).map((p) => (p.id === saved.id ? saved : p)),
+      };
+    })
+  );
+});
+
   // Grava `entry` no banco (insert, ou update se estamos editando — o id
   // vem de formData) e espelha o item devolvido em pacient[...][field].
   // Se falhar, o form continua aberto (saveListItem já mostrou o erro).
@@ -313,9 +323,9 @@ export default function App() {
       time:
         output.time ||
         new Date().toLocaleString([], { hour: '2-digit', minute: '2-digit' }),
-      date: formData?.date ?? todayBR(),
+      date: output.date,
       completed: formData?.completed ?? false,
-      type: formData?.type ?? 'task',
+      type: 'event',
       // só vão se o form de tarefa/evento os preencher; ausentes = não altera
       professional: output.professional,
       place: output.place,
@@ -350,6 +360,7 @@ export default function App() {
       date: output.date ,
       doctor: output.doctor,
       file: output.file,
+      fileType: output.fileType,
     });
 
   const saveMedicine = (output) =>
@@ -388,48 +399,103 @@ export default function App() {
     );
   };
 
+  const removePacientConnection = async (pacienteId, targetUserId) => {
+  const targetPacienteId = pacienteId ?? requireSelectedPacient();
+  if (!targetPacienteId || !targetUserId) return;
+
+  if (targetUserId === profile.id) {
+    Alert.alert(
+      'Atenção',
+      'Para sair deste paciente, use a opção de desconectar.'
+    );
+    return;
+  }
+
+  const ok = await confirmar(
+    'Remover conexão',
+    `Remover o acesso deste usuário a ${nomeDoPaciente(targetPacienteId)}?`,
+    'Remover'
+  );
+  if (!ok) return;
+
+  await guarded(async () => {
+    const removido = await removerConexaoPaciente(targetPacienteId, targetUserId);
+    if (!removido) return;
+    await loadPacientes(profile.id);
+  })();
+};
+
+  const removeReport = async (id) => {
+    const pacienteId = requireSelectedPacient();
+    if (!pacienteId) return;
+
+    const ok = await confirmar(
+      'Remover relatório',
+      'Tem certeza que deseja apagar este relatório? Essa ação não pode ser desfeita.',
+      'Remover'
+    );
+    if (!ok) return;
+
+    // Chama a função correta do storageFuncs
+    const sucesso = await removerRelatorio(id);
+    if (!sucesso) return;
+
+    // Atualiza o estado local removendo o relatório apagado
+    setPacient((prev) =>
+      prev.map((p) =>
+        p.id !== pacienteId
+          ? p
+          : { ...p, reports: (p.reports ?? []).filter((r) => r.id !== id) }
+      )
+    );
+  };
+
   // Estoque: um usuário só tem um estoque (profile.stockId), então o
   // produto sempre é adicionado/editado dentro desse estoque.
+  // Salva cada item da lista como um produto individual no estoque
   const saveStockProduct = async (output) => {
     if (!profile.stockId) {
       Alert.alert('Atenção', 'Conecte-se a um estoque primeiro.');
       return;
     }
 
-    const saved = await saveProduto(
-      profile.stockId,
-      {
-        name: output.name,
-        quantity: output.quantity,
-        lastAcquisition: output.lastAcquisition || todayBR(),
-        foto: output.foto,
-      },
-      formData?.id ?? null
-    );
-    if (!saved) return;
+    const itemsList = Array.isArray(output.items) ? output.items : [];
 
-    setStock((prev) =>
-      prev.map((s) => {
-        if (s.id !== profile.stockId) return s;
-        const list = s.products ?? [];
-        const exists = list.some((p) => p.id === saved.id);
-        return {
-          ...s,
-          products: exists
-            ? list.map((p) => (p.id === saved.id ? saved : p))
-            : [...list, saved],
-        };
-      })
-    );
-    closeForm();
+    let successCount = 0;
+
+    for (const item of itemsList) {
+      if (!item.name || !String(item.name).trim()) continue;
+
+      const saved = await saveProduto(
+        profile.stockId,
+        {
+          name: item.name,
+          quantity: item.quantity || '0',
+          lastAcquisition: output.lastAcquisition || todayBR(),
+          foto: output.foto || null,
+        },
+        null // Sempre cria um novo produto para cada linha da lista
+      );
+
+      if (saved) successCount++;
+    }
+
+    if (successCount > 0) {
+      // Recarrega os estoques para atualizar a tela com os novos produtos individuais
+      await loadEstoques(profile.id);
+      closeForm();
+    } else {
+      Alert.alert('Atenção', 'Preencha o nome de pelo menos um produto para salvar.');
+    }
   };
 
   // Cria um estoque novo no banco, vazio, já conectado ao usuário atual.
-  const createStock = async (output) => {
+  // Cria um estoque novo no banco, vazio, já conectado ao usuário atual.
+  const createStock = async () => {
     const id = await criarEstoque();
     if (!id) return;
     await loadEstoques(profile.id);
-    closeForm();
+    closeForm(); // Fecha o formulário/modal caso estivesse aberto
   };
 
   // Conecta o usuário atual a um estoque existente pelo CÓDIGO dele
@@ -721,9 +787,9 @@ export default function App() {
     medicine: { component: MedicineF, output: guarded(saveMedicine) },
     pacient: { component: PacientF, output: guarded(savePacient) },
     stock: { component: StockF, output: guarded(saveStockProduct) },
+    editStock: { component: EditStockF, output: guarded(saveStockProduct) },
     task: { component: TaskF, output: guarded(saveTask) },
     report: { component: ReportF, output: guarded(saveReport) },
-    createStock: { component: CreateStockF, output: guarded(createStock) },
     connectStock: { component: ConnectStockF, output: connectToStock },
     connectPacient: { component: ConnectPacientF, output: connectToPacient },
     weight: { component: WeightF, output: guarded(saveWeight) },
@@ -754,6 +820,8 @@ export default function App() {
           <>
             <AppCycle
               openForm={openForm}
+              onDeleteReport={removeReport}
+              onRemovePacientConnection={removePacientConnection}
               profilestuff={profile}
               pacientstuff={pacient}
               stockstuff={stock}
@@ -765,6 +833,7 @@ export default function App() {
               onRemoveMedicine={removeMedicine}
               onToggleTask={toggleTask}
               onDeleteUser={deleteUser}
+              onUpdateStockQuantity={updateStockQuantity}
             />
             {ActiveForm && (
               <ActiveForm.component

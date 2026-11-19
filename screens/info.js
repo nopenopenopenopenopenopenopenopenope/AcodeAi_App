@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, Text, View, ScrollView, Image, TouchableOpacity, Linking } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { urlDoLaudo, buscarConexoesPaciente } from '../components/storageFuncs';
 
 /**
  * Paciente (patient) object shape driving this whole screen.
@@ -124,12 +125,38 @@ const toPacientFormData = (paciente) => ({
   foto: paciente?.foto ?? '',
 });
 
-export default function Info({ paciente, func }) {
+export default function Info({ paciente, func, currentUserId, onRemovePacientConnection }) {
   const age = calculateAge(paciente?.birthDate);
 
   // Hooks precisam vir antes do return condicional abaixo.
   const [showVitals, setShowVitals] = useState(false);
   const [showWeights, setShowWeights] = useState(false);
+  const [connections, setConnections] = useState([]);
+
+  const loadConnections = useCallback(async () => {
+    if (!paciente?.id) {
+      setConnections([]);
+      return;
+    }
+    const list = await buscarConexoesPaciente(paciente.id);
+    setConnections(Array.isArray(list) ? list : []);
+  }, [paciente?.id]);
+
+  useEffect(() => {
+    loadConnections();
+  }, [loadConnections]);
+
+  const isAdmin = Boolean(
+    currentUserId &&
+      connections.some((c) => c.user_id === currentUserId && c.is_admin)
+  );
+  const otherConnections = connections.filter((c) => c.user_id !== currentUserId);
+
+  const handleRemoveConnection = async (targetUserId) => {
+    if (!onRemovePacientConnection || !paciente?.id) return;
+    await onRemovePacientConnection(paciente.id, targetUserId);
+    await loadConnections();
+  };
 
   // Mais recente primeiro (ordem já vem do storage).
   const vitals = paciente?.vitals ?? [];
@@ -137,8 +164,9 @@ export default function Info({ paciente, func }) {
   const latestVital = vitals[0];
   const latestWeight = weights[0];
 
-  const openLaudo = (file) => {
-    Linking.openURL(file);
+  const openLaudo = async (file) => {
+    const url = await urlDoLaudo(file);
+    if (url) Linking.openURL(url);
   };
 
   if (!paciente) {
@@ -307,6 +335,34 @@ export default function Info({ paciente, func }) {
           <Text style={styles.addLaudoButtonText}>Adicionar laudo</Text>
         </TouchableOpacity>
       </View>
+
+      {isAdmin && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Usuários conectados</Text>
+          {otherConnections.length ? (
+            otherConnections.map((user) => (
+              <View key={user.user_id} style={styles.laudoRow}>
+                <View style={styles.laudoInfo}>
+                  <Feather name="user" size={18} color="#333333" />
+                  <View>
+                    <Text style={styles.laudoTitle}>{user.name || user.email}</Text>
+                    {user.email && user.name && (
+                      <Text style={styles.laudoDate}>{user.email}</Text>
+                    )}
+                  </View>
+                </View>
+                <TouchableOpacity onPress={() => handleRemoveConnection(user.user_id)}>
+                  <Text style={styles.removeConnectionText}>Remover</Text>
+                </TouchableOpacity>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.emptySectionText}>
+              Nenhum outro usuário conectado a este paciente
+            </Text>
+          )}
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -417,6 +473,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: 'bold',
     color: '#1A1A1A',
+  },
+  removeConnectionText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#C62828',
   },
   heartRateRow: {
     flexDirection: 'row',

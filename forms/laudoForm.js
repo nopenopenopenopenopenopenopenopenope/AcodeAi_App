@@ -19,6 +19,7 @@ export default function LaudoF({ style, closeForm, useOutput, initialData }) {
   const [doctor, setDoctor] = useState(initialData?.doctor ?? '');
   const [file, setFile] = useState(initialData?.file ?? '');
   const [fileName, setFileName] = useState('');
+  const [fileType, setFileType] = useState('');
 
   const pickFile = async () => {
     const result = await DocumentPicker.getDocumentAsync({
@@ -31,6 +32,7 @@ export default function LaudoF({ style, closeForm, useOutput, initialData }) {
     if (!asset?.uri) return;
     setFile(asset.uri);
     setFileName(asset.name ?? '');
+    setFileType(asset.mimeType ?? '');
   };
 
   // A validação (nome, médico, data e arquivo obrigatórios) fica no storage:
@@ -41,6 +43,7 @@ export default function LaudoF({ style, closeForm, useOutput, initialData }) {
       date: date,
       doctor: doctor,
       file: file,
+      fileType: fileType,
     });
   };
 

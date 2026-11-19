@@ -1,25 +1,16 @@
 import { StyleSheet, Text, View, ScrollView } from 'react-native';
 
-/*
-  Reads paciente.schedule (see screens/info.js for the full shape) and
-  shows the upcoming entries with type "event" (e.g. medical appointments,
-  exams) — as opposed to type "task" (routine reminders like medication,
-  which live on the calendar screen instead).
-
-  Extra fields an "event" entry can carry, on top of the base schedule
-  shape ({ name, desc, time, date, completed }):
-  {
-    type: 'event',
-    professional: string, // e.g. "Dra. Carla Vespolli"
-    place: string,        // e.g. "Hospital das Clínicas da UFMG"
-    address: string,      // e.g. "Av. Prof. Alfredo Balena, 110 - Santa Efigênia"
-  }
-*/
-
 const WEEKDAY_NAMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
 const parseDate = (dateStr) => {
-  const [day, month, year] = String(dateStr ?? '').split('/').map(Number);
+  if (!dateStr) return null;
+  // Suporta tanto o formato "dd/mm/aaaa" quanto "aaaa-mm-dd" do banco
+  if (dateStr.includes('-')) {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    if (!day || !month || !year) return null;
+    return new Date(year, month - 1, day);
+  }
+  const [day, month, year] = dateStr.split('/').map(Number);
   if (!day || !month || !year) return null;
   return new Date(year, month - 1, day);
 };
@@ -48,7 +39,10 @@ const getUpcomingEvents = (schedule) => {
   return (schedule ?? [])
     .filter((item) => item.type === 'event')
     .map((item) => ({ ...item, _date: parseDate(item.date) }))
-    .filter((item) => item._date && item._date >= today)
+    .filter((item) => {
+      // Se quiser mostrar mesmo eventos passados para teste, remova a verificação `item._date >= today`
+      return item._date && item._date >= today;
+    })
     .sort((a, b) => a._date - b._date || timeToMinutes(a.time) - timeToMinutes(b.time));
 };
 
@@ -83,6 +77,7 @@ function EventCard({ event }) {
 export default function Home({ paciente, func }) {
   const events = getUpcomingEvents(paciente?.schedule);
   const nextEvent = events[0];
+  const otherEvents = events.slice(1); // Pega todos menos o primeiro para não duplicar
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -94,10 +89,10 @@ export default function Home({ paciente, func }) {
       )}
 
       <Text style={[styles.sectionTitle, styles.sectionTitleSpaced]}>Outros eventos</Text>
-      {events.length === 0 ? (
+      {otherEvents.length === 0 ? (
         <Text style={styles.emptyText}>Nenhum outro evento agendado</Text>
       ) : (
-        events.map((event, index) => <EventCard key={index} event={event} />)
+        otherEvents.map((event, index) => <EventCard key={index} event={event} />)
       )}
     </ScrollView>
   );

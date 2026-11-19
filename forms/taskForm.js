@@ -2,28 +2,36 @@ import {
   StyleSheet,
   Text,
   View,
-  Dimensions,
   TouchableOpacity,
   TextInput,
   Animated,
 } from 'react-native';
 
 import { useState } from 'react';
-import DateField from '../components/DateField';
+import DateField, { formatDateBR } from '../components/DateField';
 
 export default function TaskF({ style, closeForm, useOutput, initialData }) {
   const [nome, setNome] = useState(initialData?.name ?? '');
   const [desc, setDesc] = useState(initialData?.desc ?? '');
+  
+  // Data padrão: usa a data existente ou a de hoje formatada em BR (dd/mm/aaaa)
+  const [date, setDate] = useState(
+    initialData?.date ?? formatDateBR(new Date())
+  );
+  // Horário padrão: usa o horário existente ou o atual formatado (ex: "14h30")
   const [time, setTime] = useState(initialData?.time ?? '');
+
   const formOutput = () => {
     const output = {
       name: nome,
       desc: desc,
+      date: date,
       time: time,
     };
 
     useOutput(output);
   };
+
   return (
     <Animated.View
       style={[styles.container, style]}
@@ -33,7 +41,7 @@ export default function TaskF({ style, closeForm, useOutput, initialData }) {
           <View style={styles.item}>
             <Text>Nome da tarefa</Text>
             <TextInput
-              keyboardType="text"
+              keyboardType="default"
               style={styles.input}
               placeholder="Ex: “Remédio: Levedopa” "
               placeholderTextColor="#B3B3B3"
@@ -47,7 +55,7 @@ export default function TaskF({ style, closeForm, useOutput, initialData }) {
           <View style={styles.item}>
             <Text>Descrição rápida</Text>
             <TextInput
-              keyboardType="text"
+              keyboardType="default"
               style={styles.input}
               placeholder="Ex: “Ministrar remédio” "
               placeholderTextColor="#B3B3B3"
@@ -55,10 +63,24 @@ export default function TaskF({ style, closeForm, useOutput, initialData }) {
               onChangeText={(text) => {
                 setDesc(text);
               }}
-              autoComplete="none"
+              autoComplete="off"
             />
           </View>
+          
+          {/* Seletor de Data */}
           <View style={styles.item}>
+            <Text>Data da tarefa</Text>
+            <DateField
+              value={date}
+              onChange={setDate}
+              mode="date"
+              placeholder="Escolher a data"
+            />
+          </View>
+
+          {/* Seletor de Horário */}
+          <View style={styles.item}>
+            <Text>Horário</Text>
             <DateField
               value={time}
               onChange={setTime}
@@ -66,6 +88,7 @@ export default function TaskF({ style, closeForm, useOutput, initialData }) {
               placeholder="Escolher o horário"
             />
           </View>
+
           <View style={styles.item}>
             <TouchableOpacity style={styles.button} onPress={formOutput}>
               <Text style={{ color: '#F5F5F5' }}>Registrar</Text>
@@ -91,20 +114,20 @@ const styles = StyleSheet.create({
   button: {
     backgroundColor: '#36A06F',
     borderRadius: 8,
-    padding: 8,
+    padding: 10,
     alignItems: 'center',
   },
   item: {
-    gap: 8,
+    gap: 4,
   },
   form: {
     width: '80%',
-    padding: 12,
+    padding: 16,
     backgroundColor: '#FFFFFF',
     borderRadius: 8,
     borderColor: '#D9D9D9',
     borderWidth: 1,
-    gap: 8,
+    gap: 12,
   },
   input: {
     borderWidth: 1,

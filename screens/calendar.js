@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-
+import DateField, { formatDateBR, parseDateBR } from '../components/DateField';
+import { addTaskToDeviceCalendar } from '../components/deviceCalendar';
 /*
   Reads paciente.schedule — an array of entries built on top of TaskF's
   formOutput() shape ({ name, desc, time }), plus a couple of fields the
@@ -83,18 +84,40 @@ export default function Calendar({ paciente, func }) {
     }));
   };
 
+  // Função disparada quando o usuário escolhe uma data pelo DateField
+  const handleDatePicked = (dateString) => {
+    const parsedDate = parseDateBR(dateString);
+    if (parsedDate) {
+      setSelectedDate(startOfDay(parsedDate));
+    }
+  };
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {paciente &&(
-      <View style={styles.headerRow}>
-        <Text style={styles.headerDate}>{formatHeaderDate(selectedDate)}</Text>
-        <TouchableOpacity onPress={() => func?.('task')}>
-          <Feather name="plus" size={26} color="#36A06F" />
+      {paciente && (
+        <View style={styles.headerRow}>
+          <Text style={styles.headerDate}>{formatHeaderDate(selectedDate)}</Text>
+          <TouchableOpacity onPress={() => func?.('task')}>
+            <Feather name="plus" size={26} color="#36A06F" />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Linha com o botão "Hoje" e o botão de escolher data */}
+      <View style={styles.topActionsRow}>
+        <TouchableOpacity onPress={() => setSelectedDate(today)}>
+          <Text style={styles.todayLink}>Hoje</Text>
         </TouchableOpacity>
-      </View>)}
-      <TouchableOpacity onPress={() => setSelectedDate(today)}>
-        <Text style={styles.todayLink}>Hoje</Text>
-      </TouchableOpacity>
+
+        <View style={styles.dateFieldContainer}>
+          <DateField
+            value={formatDateKey(selectedDate)}
+            onChange={handleDatePicked}
+            mode="date"
+            placeholder="Escolher data"
+          />
+        </View>
+      </View>
 
       <View style={styles.weekCard}>
         <Text style={styles.weekTitle}>Semana atual</Text>
@@ -140,18 +163,31 @@ export default function Calendar({ paciente, func }) {
                 </View>
 
                 <View style={[styles.taskCard, checked && styles.taskCardChecked]}>
-                  <View style={styles.taskCardText}>
-                    <Text style={[styles.taskName, checked && styles.taskNameChecked]}>
-                      {task.name}
-                    </Text>
-                    <Text style={[styles.taskDesc, checked && styles.taskDescChecked]}>
-                      {task.desc}
-                    </Text>
-                  </View>
-                  <Text style={[styles.taskTime, checked && styles.taskTimeChecked]}>
-                    {task.time}
-                  </Text>
-                </View>
+  <View style={styles.taskCardText}>
+    <Text style={[styles.taskName, checked && styles.taskNameChecked]}>
+      {task.name}
+    </Text>
+    <Text style={[styles.taskDesc, checked && styles.taskDescChecked]}>
+      {task.desc}
+    </Text>
+  </View>
+
+  <View style={styles.rightActions}>
+    <Text style={[styles.taskTime, checked && styles.taskTimeChecked]}>
+      {task.time}
+    </Text>
+    <TouchableOpacity
+      style={styles.calendarExportBtn}
+      onPress={() => addTaskToDeviceCalendar(task)}
+    >
+      <Feather
+        name="calendar"
+        size={18}
+        color={checked ? '#F5F5F5' : '#36A06F'}
+      />
+    </TouchableOpacity>
+  </View>
+</View>
               </View>
             );
           })}
@@ -162,6 +198,13 @@ export default function Calendar({ paciente, func }) {
 }
 
 const styles = StyleSheet.create({
+  rightActions: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  calendarExportBtn: {
+    padding: 4,
+  },
   container: {
     flex: 1,
     padding: 16,
@@ -176,12 +219,20 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#1A1A1A',
   },
+  topActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+    marginBottom: 16,
+  },
   todayLink: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#36A06F',
-    marginTop: 2,
-    marginBottom: 16,
+  },
+  dateFieldContainer: {
+    minWidth: 130,
   },
   weekCard: {
     backgroundColor: '#FFFFFF',

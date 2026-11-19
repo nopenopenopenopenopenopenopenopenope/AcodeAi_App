@@ -159,6 +159,77 @@ function fotoParaBanco(value) {
   return foto;
 }
 
+// ---- Laudos (arquivo no Supabase Storage) ----
+const LAUDOS_BUCKET = 'laudos';
+const TIPOS_LAUDO_OK = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png' };
+const MAX_LAUDO_BYTES = 10 * 1024 * 1024; // 10 MB (mesmo limite do bucket)
+
+const isLocalUri = (v) => typeof v === 'string' && /^(file|content):\/\//i.test(v);
+
+// Nome, médico, data e arquivo são obrigatórios.
+function validarLaudo(e) {
+  if (limparTexto(e.name, 150).length < 2) return 'Informe o nome do laudo.';
+  if (limparTexto(e.doctor, 100).length < 3) return 'Informe o nome do médico.';
+  if (!e.date) return 'Escolha a data do laudo.';
+  if (!e.file) return 'Anexe o arquivo do laudo (PDF ou imagem).';
+  return validarDataBr(e.date);
+}
+
+// Envia o arquivo escolhido (uri local) para o bucket e devolve o caminho
+// dentro dele ("<codigo do paciente>/<arquivo>"). É esse caminho que fica em
+// laudos.arquivo_path; quem pode ler/enviar é decidido pelas policies do
+// storage (usuário conectado ao paciente).
+async function enviarLaudo(pacienteId, entry) {
+  const ext = TIPOS_LAUDO_OK[entry.fileType];
+  if (!ext) {
+    Alert.alert('Atenção', 'Envie o laudo em PDF, JPG ou PNG.');
+    return null;
+  }
+
+  try {
+    const res = await fetch(entry.file);
+    const buffer = await res.arrayBuffer();
+
+    if (buffer.byteLength > MAX_LAUDO_BYTES) {
+      Alert.alert('Atenção', 'O arquivo é muito grande (máximo de 10 MB).');
+      return null;
+    }
+
+    const path = `${pacienteId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+    const { error } = await supabase.storage
+      .from(LAUDOS_BUCKET)
+      .upload(path, buffer, { contentType: entry.fileType, upsert: false });
+
+    if (error) return fail('Erro ao enviar laudo', error);
+    return path;
+  } catch (error) {
+    return fail('Erro ao enviar laudo', error);
+  }
+}
+
+// Gera um link temporário (5 min) para abrir o arquivo do laudo.
+export async function urlDoLaudo(path) {
+  if (/^https?:\/\//i.test(path ?? '')) return path;
+
+  // laudos antigos guardavam o caminho local do celular de quem enviou
+  if (!path || isLocalUri(path)) {
+    Alert.alert(
+      'Atenção',
+      'Este laudo foi salvo antes do envio para a nuvem e não pode ser aberto. Anexe-o novamente.'
+    );
+    return null;
+  }
+
+  const { data, error } = await supabase.storage
+    .from(LAUDOS_BUCKET)
+    .createSignedUrl(path, 300);
+
+  if (error || !data?.signedUrl) {
+    return fail('Erro ao abrir laudo', error ?? { message: 'Sem link assinado.' });
+  }
+  return data.signedUrl;
+}
+
 // ---- Exclusão de conta / recuperação de senha ----
 export async function apagarUsuario() {
   try {
@@ -375,7 +446,10 @@ const PACIENTES_SELECT = `
   id_paciente_fk,
   Pacientes (
     *,
-    medicamentos (*),
+    medicamentos (
+      *,
+      medicamento_doses (*)
+    ),
     laudos (*),
     tarefas (*),
     relatorios (*),
@@ -687,6 +761,11 @@ export async function registrarCheckIn(pacienteId, output, existingId = null) {
 }
 
 // ---- Listas do paciente ----
+export async function removerRelatorio(id) {
+  const { error } = await supabase.from('relatorios').delete().eq('id', id);
+  if (error) return fail('Erro ao remover relatório', error);
+  return true;
+}
 
 const LISTS = {
   medicines: {
@@ -695,7 +774,7 @@ const LISTS = {
       nome: limparTexto(e.name, 100),
       inicio: e.start ? toIsoDate(e.start) : undefined,
       tratamento: e.treatment != null ? limparTexto(e.treatment, 300) : undefined,
-      frequencia: e.frequency != null ? limparTexto(e.frequency, 100) : undefined,
+      frequencia: e.frequency != null ? limparTexto(e.frequency, 100) : undefined, // horários em texto separado por vírgula
       foto_path: fotoParaBanco(e.foto),
     }),
     fromRow: (r) => ({
@@ -704,6 +783,9 @@ const LISTS = {
       start: toBrDate(r.inicio),
       treatment: r.tratamento ?? '',
       frequency: r.frequencia ?? '',
+      times: r.frequencia
+        ? r.frequencia.split(',').map((t) => t.trim()).filter(Boolean)
+        : [],
       foto: r.foto_path ?? null,
     }),
   },
@@ -788,13 +870,21 @@ const LISTS = {
 export async function saveListItem(field, pacienteId, entry, existingId = null) {
   const cfg = LISTS[field];
   if (!cfg) return fail(`Lista inválida (${field})`, { message: 'Lista inválida' });
+
   if (field === 'laudos') {
-  const erro = validarLaudo(entry);
-  if (erro) {
-    Alert.alert('Atenção', erro);
-    return null;
+    const erro = validarLaudo(entry);
+    if (erro) {
+      Alert.alert('Atenção', erro);
+      return null;
+    }
+    // arquivo novo escolhido no aparelho: sobe para o Storage e guarda só o caminho
+    if (isLocalUri(entry.file)) {
+      const path = await enviarLaudo(pacienteId, entry);
+      if (!path) return null;
+      entry = { ...entry, file: path };
+    }
   }
-}
+
   const row = clean(cfg.toRow(entry));
   if (row.foto_path === false) return null; // foto grande demais
 
@@ -1040,13 +1130,75 @@ export async function removerMedicamento(id) {
   if (error) return fail('Erro ao remover medicamento', error);
   return true;
 }
-function validarLaudo(e) {
-  if (limparTexto(e.name, 150).length < 2) return 'Informe o nome do laudo.';
-  if (limparTexto(e.doctor, 100).length < 3) return 'Informe o nome do médico.';
-  if (!e.date) return 'Escolha a data do laudo.';
-  if (!e.file) return 'Anexe o arquivo do laudo (PDF ou imagem).';
-  return validarDataBr(e.date);
-}
+
 // ---- Constantes ----
 export const userImg =
   'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQQchi5sg7mUmbWbRUeVh1Mus0NYioqXle1nMqVk5dcUQ&s=10';
+
+// ---- Conexões do paciente (admin) ----
+
+export async function buscarConexoesPaciente(codigo) {
+  if (!codigo) return [];
+
+  const { data, error } = await supabase.rpc('listar_conexoes_paciente', {
+    p_codigo: String(codigo).trim(),
+  });
+
+  if (error) {
+    return fail('Erro ao buscar conexões do paciente', error);
+  }
+
+  return data ?? [];
+}
+
+export async function removerConexaoPaciente(codigo, alvoUsuarioId) {
+  if (!codigo || !alvoUsuarioId) {
+    return fail('Dados inválidos', {
+      message: 'Código do paciente ou usuário não informado.',
+    });
+  }
+
+  const { error } = await supabase.rpc('remover_conexao_paciente', {
+    p_codigo: String(codigo).trim(),
+    p_alvo_usuario_id: alvoUsuarioId,
+  });
+
+  if (error) {
+    return fail('Erro ao remover conexão do usuário', error);
+  }
+
+  return true;
+}
+
+// ---- Doses de medicamento ----
+
+export async function marcarDoseMedicamento(medicamentoId, data, horario, consumido) {
+  if (consumido) {
+    const { error } = await supabase
+      .from('medicamento_doses')
+      .upsert(
+        {
+          medicamento_id: medicamentoId,
+          data,
+          horario,
+        },
+        {
+          onConflict: 'medicamento_id,data,horario',
+          ignoreDuplicates: true,
+        }
+      );
+
+    if (error) return fail('Erro ao registrar dose', error);
+  } else {
+    const { error } = await supabase
+      .from('medicamento_doses')
+      .delete()
+      .eq('medicamento_id', medicamentoId)
+      .eq('data', data)
+      .eq('horario', horario);
+
+    if (error) return fail('Erro ao desmarcar dose', error);
+  }
+
+  return true;
+}
