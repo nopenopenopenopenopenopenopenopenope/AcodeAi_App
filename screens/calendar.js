@@ -68,7 +68,7 @@ export default function Calendar({ paciente, func }) {
   const selectedKey = formatDateKey(selectedDate);
 
   const tasks = schedule
-    .filter((task) => task.date === selectedKey && task.type !== 'event')
+    .filter((task) => task.date === selectedKey)
     .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
 
   const isTaskChecked = (task, index) => {
