@@ -3,10 +3,12 @@ import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-nati
 import Svg, { Circle } from 'react-native-svg';
 
 /*
-  Reads paciente.diet (see screens/info.js for the full shape). There is
-  no DietF form yet, so "Modificar" just calls func('diet') — harmless
-  no-op today, ready to open a form once one exists in forms/ and is
-  registered in App.js's `forms` map.
+  Reads paciente.diet (see screens/info.js for the full shape).
+  - metas: diet.calories.goal, diet.macros.*.goal, diet.water.goal
+  - consumo: diet.records (um item por refeição/copo, com a data 'yyyy-mm-dd');
+    a tela soma os registros do dia selecionado na semana.
+  Os botões de registrar mandam o dia selecionado em `date`, e o App.js
+  (saveDiet) grava o consumo nesse dia.
 */
 
 const WEEKDAY_LABELS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB'];
@@ -21,6 +23,13 @@ const isSameDay = (a, b) =>
   a.getFullYear() === b.getFullYear() &&
   a.getMonth() === b.getMonth() &&
   a.getDate() === b.getDate();
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+// 'yyyy-mm-dd' no fuso do aparelho (mesmo formato dos registros)
+const toIso = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+const formatDayBr = (d) => `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
 
 const getWeekDates = (date) => {
   const day = date.getDay(); // 0 (dom) .. 6 (sáb)
@@ -48,6 +57,12 @@ const formatWaterAmount = (ml) => {
 const percentOf = (entry) => {
   if (!entry?.goal) return 0;
   return Math.max(0, Math.min(100, (entry.current / entry.goal) * 100));
+};
+
+// Porcentagem sem o teto de 100 (para mostrar quando passa da meta)
+const rawPercentOf = (entry) => {
+  if (!entry?.goal) return 0;
+  return Math.max(0, Math.round((entry.current / entry.goal) * 100));
 };
 
 function ProgressRing({ percent, size, strokeWidth, trackColor, fillColor, children }) {
@@ -94,13 +109,16 @@ function MacroBar({ percent }) {
   );
 }
 
-function Macro({ emoji, label, grams, percent }) {
+// Mostra o consumido e a meta: "40 / 250 g"
+function Macro({ emoji, label, current, goal, percent }) {
   return (
     <View style={styles.macro}>
       <Text style={styles.macroEmoji}>{emoji}</Text>
       <Text style={styles.macroLabel}>{label}</Text>
       <MacroBar percent={percent} />
-      <Text style={styles.macroValue}>{grams} g</Text>
+      <Text style={styles.macroValue}>
+        {Math.round(current)} / {Math.round(goal)} g
+      </Text>
     </View>
   );
 }
@@ -110,13 +128,42 @@ export default function Diet({ paciente, func }) {
   const [selectedDate, setSelectedDate] = useState(today);
   const weekDates = getWeekDates(selectedDate);
 
+  const selectedIso = toIso(selectedDate);
+  const isToday = isSameDay(selectedDate, today);
+
   const diet = paciente?.diet;
-  const calories = diet?.calories ?? { current: 0, goal: 0 };
+
+  // Consumo do dia selecionado: soma dos registros daquela data. Se o storage
+  // não mandar `records` (versão antiga), cai nos totais de hoje.
+  const hasRecords = Array.isArray(diet?.records);
+  const consumed = (key, todayFallback) => {
+    if (!hasRecords) return isToday ? todayFallback ?? 0 : 0;
+    return diet.records
+      .filter((r) => r.date === selectedIso)
+      .reduce((acc, r) => acc + (r[key] ?? 0), 0);
+  };
+
   const macros = diet?.macros ?? {};
-  const carbs = macros.carbs ?? { current: 0, goal: 0 };
-  const protein = macros.protein ?? { current: 0, goal: 0 };
-  const lipids = macros.lipids ?? { current: 0, goal: 0 };
-  const water = diet?.water ?? { current: 0, goal: 0 };
+  const calories = {
+    current: consumed('calories', diet?.calories?.current),
+    goal: diet?.calories?.goal ?? 0,
+  };
+  const carbs = {
+    current: consumed('carbs', macros.carbs?.current),
+    goal: macros.carbs?.goal ?? 0,
+  };
+  const protein = {
+    current: consumed('protein', macros.protein?.current),
+    goal: macros.protein?.goal ?? 0,
+  };
+  const lipids = {
+    current: consumed('lipids', macros.lipids?.current),
+    goal: macros.lipids?.goal ?? 0,
+  };
+  const water = {
+    current: consumed('water', diet?.water?.current),
+    goal: diet?.water?.goal ?? 0,
+  };
   const allergies = diet?.restrictions?.allergies ?? [];
   const intolerances = diet?.restrictions?.intolerances ?? [];
 
@@ -124,8 +171,10 @@ export default function Diet({ paciente, func }) {
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <Text style={styles.title}>Alimentação</Text>
 
-      <TouchableOpacity onPress={() => setSelectedDate(today)}>
-        <Text style={styles.todayLabel}>Hoje</Text>
+      <TouchableOpacity disabled={isToday} onPress={() => setSelectedDate(today)}>
+        <Text style={styles.todayLabel}>
+          {isToday ? 'Hoje' : `${formatDayBr(selectedDate)} (voltar para hoje)`}
+        </Text>
       </TouchableOpacity>
 
       <View style={styles.weekCard}>
@@ -152,8 +201,8 @@ export default function Diet({ paciente, func }) {
       </View>
 
       {!paciente ? (
-              <Text style={styles.emptyText}>Nenhum paciente selecionado</Text>
-            ) : !diet ? (
+        <Text style={styles.emptyText}>Nenhum paciente selecionado</Text>
+      ) : !diet ? (
         <>
           <Text style={styles.emptyText}>Nenhuma dieta configurada</Text>
           <TouchableOpacity
@@ -173,19 +222,41 @@ export default function Diet({ paciente, func }) {
               trackColor="#1F5C43"
               fillColor="#7ED9A8"
             >
-              <Text style={styles.calorieValue}>{formatThousands(calories.goal)} kcal</Text>
+              <Text style={styles.calorieValue}>{formatThousands(calories.current)}</Text>
+              <Text style={styles.calorieGoal}>de {formatThousands(calories.goal)} kcal</Text>
             </ProgressRing>
 
             <View style={styles.macrosRow}>
-              <Macro emoji="🍞" label="Carboidratos" grams={carbs.goal} percent={percentOf(carbs)} />
-              <Macro emoji="🫒" label="Lipídios" grams={lipids.goal} percent={percentOf(lipids)} />
+              <Macro
+                emoji="🍞"
+                label="Carboidratos"
+                current={carbs.current}
+                goal={carbs.goal}
+                percent={percentOf(carbs)}
+              />
+              <Macro
+                emoji="🫒"
+                label="Lipídios"
+                current={lipids.current}
+                goal={lipids.goal}
+                percent={percentOf(lipids)}
+              />
             </View>
             <View style={styles.macrosCenterRow}>
-              <Macro emoji="🥩" label="Proteínas" grams={protein.goal} percent={percentOf(protein)} />
+              <Macro
+                emoji="🥩"
+                label="Proteínas"
+                current={protein.current}
+                goal={protein.goal}
+                percent={percentOf(protein)}
+              />
             </View>
           </View>
 
-          <TouchableOpacity style={styles.button} onPress={() => func?.('diet', { section: 'meal' })}>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={() => func?.('diet', { section: 'meal', date: selectedIso })}
+          >
             <Text style={styles.buttonText}>Registrar refeição</Text>
           </TouchableOpacity>
 
@@ -214,14 +285,19 @@ export default function Diet({ paciente, func }) {
               fillColor="#3FB4E0"
             >
               <Text style={styles.waterEmoji}>💧</Text>
-              <Text style={styles.waterPercent}>{Math.round(percentOf(water))}%</Text>
+              <Text style={styles.waterPercent}>{rawPercentOf(water)}%</Text>
               <Text style={styles.waterAmount}>{formatWaterAmount(water.current)}</Text>
+              {!!water.goal && (
+                <Text style={styles.waterGoal}>de {formatWaterAmount(water.goal)}</Text>
+              )}
             </ProgressRing>
           </View>
 
           <TouchableOpacity
             style={styles.button}
-            onPress={() => func?.('diet', { section: 'water', water: water.goal || '' })}
+            onPress={() =>
+              func?.('diet', { section: 'water', water: water.goal || '', date: selectedIso })
+            }
           >
             <Text style={styles.buttonText}>Modificar</Text>
           </TouchableOpacity>
@@ -344,8 +420,12 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   calorieValue: {
-    fontSize: 16,
+    fontSize: 24,
     fontWeight: 'bold',
+    color: '#F5F5F5',
+  },
+  calorieGoal: {
+    fontSize: 12,
     color: '#F5F5F5',
   },
   macrosRow: {
@@ -424,6 +504,10 @@ const styles = StyleSheet.create({
   waterAmount: {
     fontSize: 14,
     fontWeight: '600',
+    color: '#F5F5F5',
+  },
+  waterGoal: {
+    fontSize: 12,
     color: '#F5F5F5',
   },
   subTitle: {

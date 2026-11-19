@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, Text, View, ScrollView, Image, TouchableOpacity, Linking } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Feather, FontAwesome5 } from '@expo/vector-icons';
 import { urlDoLaudo, buscarConexoesPaciente } from '../components/storageFuncs';
 
 /**
@@ -125,7 +125,15 @@ const toPacientFormData = (paciente) => ({
   foto: paciente?.foto ?? '',
 });
 
-export default function Info({ paciente, func, currentUserId, onRemovePacientConnection }) {
+const plural = (n, singular, pluralForm) => `${n} ${n === 1 ? singular : pluralForm}`;
+
+export default function Info({
+  paciente,
+  func,
+  navigation,
+  currentUserId,
+  onRemovePacientConnection,
+}) {
   const age = calculateAge(paciente?.birthDate);
 
   // Hooks precisam vir antes do return condicional abaixo.
@@ -163,6 +171,14 @@ export default function Info({ paciente, func, currentUserId, onRemovePacientCon
   const weights = paciente?.weightHistory ?? [];
   const latestVital = vitals[0];
   const latestWeight = weights[0];
+
+  // Resumos mostrados nos atalhos para Relatórios e Dieta
+  const reportsCount = paciente?.reports?.length ?? 0;
+  const checkinsCount = paciente?.checkins?.length ?? 0;
+  const calories = paciente?.diet?.calories;
+  const dietSummary = calories?.goal
+    ? `${calories.current} / ${calories.goal} kcal hoje`
+    : 'Metas e refeições';
 
   const openLaudo = async (file) => {
     const url = await urlDoLaudo(file);
@@ -214,6 +230,34 @@ export default function Info({ paciente, func, currentUserId, onRemovePacientCon
         <Text style={styles.boldText}>Restrições alimentares: </Text>
         {paciente?.diet?.restrictions?.allergies?.join(', ')}
       </Text>
+
+      {/* Atalhos para as telas do paciente que saíram da barra de baixo */}
+      <View style={styles.shortcutsRow}>
+        <TouchableOpacity
+          style={styles.shortcutCard}
+          activeOpacity={0.8}
+          onPress={() => navigation?.navigate('reports')}>
+          <View style={styles.shortcutIconBox}>
+            <FontAwesome5 name="file-alt" size={20} color="#36A06F" />
+          </View>
+          <Text style={styles.shortcutTitle}>Relatórios</Text>
+          <Text style={styles.shortcutSub}>
+            {plural(reportsCount, 'relatório', 'relatórios')} ·{' '}
+            {plural(checkinsCount, 'check-in', 'check-ins')}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.shortcutCard}
+          activeOpacity={0.8}
+          onPress={() => navigation?.navigate('diet')}>
+          <View style={styles.shortcutIconBox}>
+            <FontAwesome5 name="utensils" size={20} color="#36A06F" />
+          </View>
+          <Text style={styles.shortcutTitle}>Dieta</Text>
+          <Text style={styles.shortcutSub}>{dietSummary}</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Ritmo cardíaco + pressão: mostra o registro mais recente; o + abre o histórico */}
       <View style={styles.card}>
@@ -478,6 +522,40 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: 'bold',
     color: '#C62828',
+  },
+  shortcutsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  shortcutCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 14,
+    gap: 6,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  shortcutIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#EDEDED',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  shortcutTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#36A06F',
+  },
+  shortcutSub: {
+    fontSize: 12,
+    color: '#808080',
   },
   heartRateRow: {
     flexDirection: 'row',

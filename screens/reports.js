@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 /*
   Reads paciente.reports and paciente.checkins.
   Adiciona suporte para ver o relatório completo, editar e apagar.
+  Os check-ins também abrem em detalhe ao tocar (campos + medições do dia).
 */
 
 function ReportCard({ report, onOpenDetail, onEdit, onDelete }) {
@@ -40,9 +41,9 @@ function ReportCard({ report, onOpenDetail, onEdit, onDelete }) {
   );
 }
 
-function CheckInCard({ checkin }) {
+function CheckInCard({ checkin, onOpenDetail }) {
   return (
-    <View style={styles.card}>
+    <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={() => onOpenDetail(checkin)}>
       <View style={styles.iconBox}>
         <Feather name="heart" size={32} color="#36A06F" />
       </View>
@@ -54,6 +55,19 @@ function CheckInCard({ checkin }) {
         </View>
         {!!checkin.moodChange && <Text style={styles.bodyText}>{checkin.moodChange}</Text>}
       </View>
+      <Feather name="chevron-right" size={20} color="#B3B3B3" />
+    </TouchableOpacity>
+  );
+}
+
+// Linha "rótulo + valor" do detalhe do check-in; campo vazio mostra "Não informado".
+function DetailField({ label, value }) {
+  return (
+    <View style={styles.fieldBlock}>
+      <Text style={styles.modalSubtitle}>{label}</Text>
+      <Text style={[styles.modalBodyText, !value && styles.fieldEmpty]}>
+        {value || 'Não informado'}
+      </Text>
     </View>
   );
 }
@@ -62,8 +76,18 @@ export default function Reports({ paciente, func, onDeleteReport }) {
   const reports = paciente?.reports ?? [];
   const checkins = paciente?.checkins ?? [];
 
-  // Estado para controlar o modal de visualização completa do relatório
+  // Estados dos modais de visualização completa
   const [selectedReport, setSelectedReport] = useState(null);
+  const [selectedCheckin, setSelectedCheckin] = useState(null);
+
+  // Medições (bpm/pressão e peso) registradas no mesmo dia do check-in aberto.
+  // Elas ficam em tabelas próprias e só têm a data em comum com o check-in.
+  const dayVitals = selectedCheckin
+    ? (paciente?.vitals ?? []).filter((v) => v.date === selectedCheckin.date)
+    : [];
+  const dayWeights = selectedCheckin
+    ? (paciente?.weightHistory ?? []).filter((w) => w.date === selectedCheckin.date)
+    : [];
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -110,7 +134,13 @@ export default function Reports({ paciente, func, onDeleteReport }) {
           <Text style={styles.emptyText}>Nenhum check-in registrado</Text>
         )
       ) : (
-        checkins.map((checkin, index) => <CheckInCard key={index} checkin={checkin} />)
+        checkins.map((checkin, index) => (
+          <CheckInCard
+            key={checkin.id ?? index}
+            checkin={checkin}
+            onOpenDetail={(c) => setSelectedCheckin(c)}
+          />
+        ))
       )}
 
       {/* Modal para ver o relatório completo */}
@@ -146,6 +176,65 @@ export default function Reports({ paciente, func, onDeleteReport }) {
             <TouchableOpacity
               style={styles.closeModalBtn}
               onPress={() => setSelectedReport(null)}
+            >
+              <Text style={styles.closeModalBtnText}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal para ver o check-in completo */}
+      <Modal
+        visible={!!selectedCheckin}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSelectedCheckin(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Check-In Diário</Text>
+              <TouchableOpacity onPress={() => setSelectedCheckin(null)}>
+                <Feather name="x" size={24} color="#1A1A1A" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalDate}>Data: {selectedCheckin?.date}</Text>
+
+            <ScrollView style={styles.modalBodyScroll} showsVerticalScrollIndicator={false}>
+              <DetailField label="Como o paciente estava se sentindo" value={selectedCheckin?.feeling} />
+              <DetailField label="Sono" value={selectedCheckin?.sleep} />
+              <DetailField label="Alteração de humor" value={selectedCheckin?.moodChange} />
+              <DetailField label="Observações extras" value={selectedCheckin?.notes} />
+
+              <Text style={[styles.modalSubtitle, styles.measuresTitle]}>Medições do dia</Text>
+              {dayVitals.length === 0 && dayWeights.length === 0 ? (
+                <Text style={[styles.modalBodyText, styles.fieldEmpty]}>
+                  Nenhuma medição registrada neste dia.
+                </Text>
+              ) : (
+                <>
+                  {dayVitals.map((v) => (
+                    <View key={`v-${v.id}`} style={styles.measureRow}>
+                      <Text style={styles.measureTime}>{v.hour}</Text>
+                      <Text style={styles.measureValue}>
+                        {v.bpm != null ? `${v.bpm} bpm` : '—'}  ·  Pressão {v.pressure || '—'}
+                      </Text>
+                    </View>
+                  ))}
+                  {dayWeights.map((w) => (
+                    <View key={`w-${w.id}`} style={styles.measureRow}>
+                      <Text style={styles.measureTime}>{w.hour}</Text>
+                      <Text style={styles.measureValue}>Peso {w.value}</Text>
+                    </View>
+                  ))}
+                </>
+              )}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.closeModalBtn}
+              onPress={() => setSelectedCheckin(null)}
             >
               <Text style={styles.closeModalBtnText}>Fechar</Text>
             </TouchableOpacity>
@@ -193,7 +282,7 @@ const styles = StyleSheet.create({
   bodyLabel: { fontWeight: '600' },
   actionButtonsCol: { gap: 8, justifyContent: 'center', paddingLeft: 4 },
   actionBtn: { padding: 6, backgroundColor: '#F5F5F5', borderRadius: 6 },
-  
+
   // Estilos do Modal
   modalOverlay: {
     flex: 1,
@@ -224,4 +313,20 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   closeModalBtnText: { color: '#F5F5F5', fontWeight: 'bold', fontSize: 16 },
+
+  // Detalhe do check-in
+  fieldBlock: { marginBottom: 12 },
+  fieldEmpty: { color: '#808080', fontStyle: 'italic' },
+  measuresTitle: { marginTop: 4 },
+  measureRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EFEFEF',
+    gap: 8,
+  },
+  measureTime: { fontSize: 13, color: '#808080' },
+  measureValue: { fontSize: 14, fontWeight: '600', color: '#1A1A1A', flexShrink: 1, textAlign: 'right' },
 });

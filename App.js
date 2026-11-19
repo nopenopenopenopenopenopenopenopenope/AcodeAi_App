@@ -857,7 +857,7 @@ export default function App() {
                 <TopMenu
                   prototypeHeight={prototypeHeight}
                   prototypeWidth={prototypeWidth}
-                  userImg={userImg}
+                  userImg={profile.foto}
                   onLogout={handleLogout}
                 />
                 <BottomMenu
