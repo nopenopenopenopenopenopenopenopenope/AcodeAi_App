@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, Text, View, ScrollView, Image, TouchableOpacity, Linking } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import Svg, { Polyline, Circle } from 'react-native-svg';
 
 /**
  * Paciente (patient) object shape driving this whole screen.
@@ -14,12 +13,20 @@ import Svg, { Polyline, Circle } from 'react-native-svg';
  *   heartRate: {
  *     current: number,            // 96
  *     history: [
- *       { hour: number, bpm: number }, // x-axis is "hours ago", used for the mini chart
+ *       { hour: string, bpm: number }, // not shown on this screen anymore (chart removed); see `vitals`
  *       ...
  *     ],
  *   },
+ *   vitals: [                     // bpm + blood pressure history, NEWEST FIRST
+ *     { id, date: "dd/mm/aaaa", hour: "9:05", bpm: number | null, pressure: string },
+ *     ...
+ *   ],
  *   bloodType: string,            // "A+"
- *   weight: string,               // "68 kg"
+ *   weight: string,               // "68 kg" (current weight, kept in Pacientes)
+ *   weightHistory: [              // weight history, NEWEST FIRST
+ *     { id, date: "dd/mm/aaaa", hour: "9:05", value: "68.5 kg" },
+ *     ...
+ *   ],
  *   laudos: [
  *     {
  *       name: string,               // report file name, from LaudoF's "Nome do arquivo"
@@ -70,7 +77,7 @@ import Svg, { Polyline, Circle } from 'react-native-svg';
  *       sleep: string,      // from CheckInF's "Como foi o sono?"
  *       moodChange: string, // from CheckInF's "Há alteração de humor?"
  *       notes: string,      // from CheckInF's "Observações extras"
- *       date: string,       // "dd/mm/aaaa", from CheckInF's date picker
+ *       date: string,       // "dd/mm/aaaa", always the day the check-in was made (not typed in the form)
  *     },
  *     ...
  *   ],
@@ -91,7 +98,6 @@ import Svg, { Polyline, Circle } from 'react-native-svg';
  */
 
 const calculateAge = (birthDate) => {
-  
   if (!birthDate) return null;
   const [day, month, year] = birthDate.split('/').map(Number);
   if (!day || !month || !year) return null;
@@ -113,55 +119,23 @@ const toPacientFormData = (paciente) => ({
   name: paciente?.name ?? '',
   age: paciente?.birthDate ?? '',
   conditions: paciente?.conditions ?? [],
-  restrictions: paciente?.diet?.restrictions,
+  restrictions: paciente?.diet?.restrictions?.allergies ?? [],
   bloodType: paciente?.bloodType ?? '',
   foto: paciente?.foto ?? '',
 });
 
-function HeartRateChart({ history }) {
-  const width = 140;
-  const height = 50;
-  const bpms = history.map((h) => h.bpm);
-  const min = Math.min(...bpms);
-  const max = Math.max(...bpms);
-  const range = max - min || 1;
-
-  const points = history.map((h, i) => {
-    const x = (i / (history.length - 1 || 1)) * width;
-    const y = height - ((h.bpm - min) / range) * height;
-    return { x, y };
-  });
-
-  const polylinePoints = points.map((p) => `${p.x},${p.y}`).join(' ');
-
-  return (
-    <View>
-      <Svg width={width} height={height}>
-        <Polyline
-          points={polylinePoints}
-          fill="none"
-          stroke="#F08080"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        {points.map((p, i) => (
-          <Circle key={i} cx={p.x} cy={p.y} r="2.5" fill="#F08080" />
-        ))}
-      </Svg>
-      <View style={styles.chartLabels}>
-        {history.map((h, i) => (
-          <Text key={i} style={styles.chartLabelText}>
-            {h.hour}
-          </Text>
-        ))}
-      </View>
-    </View>
-  );
-}
-
 export default function Info({ paciente, func }) {
   const age = calculateAge(paciente?.birthDate);
+
+  // Hooks precisam vir antes do return condicional abaixo.
+  const [showVitals, setShowVitals] = useState(false);
+  const [showWeights, setShowWeights] = useState(false);
+
+  // Mais recente primeiro (ordem já vem do storage).
+  const vitals = paciente?.vitals ?? [];
+  const weights = paciente?.weightHistory ?? [];
+  const latestVital = vitals[0];
+  const latestWeight = weights[0];
 
   const openLaudo = (file) => {
     Linking.openURL(file);
@@ -178,8 +152,6 @@ export default function Info({ paciente, func }) {
       </View>
     );
   }
-
-//corrigir restrições
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -212,30 +184,55 @@ export default function Info({ paciente, func }) {
 
       <Text style={styles.conditionsText}>
         <Text style={styles.boldText}>Restrições alimentares: </Text>
-        {paciente?.restrictions?.join(', ')}
+        {paciente?.diet?.restrictions?.allergies?.join(', ')}
       </Text>
 
+      {/* Ritmo cardíaco + pressão: mostra o registro mais recente; o + abre o histórico */}
       <View style={styles.card}>
         <View style={styles.heartRateRow}>
-          <View>
+          <View style={{ flexShrink: 1 }}>
             <View style={styles.labelWithEdit}>
-              <Text style={styles.sectionTitle}>Rítmo cardíaco</Text>
-              {/*fazer isso mostrar a lista completa, não adicionar algo*/}
-              <TouchableOpacity onPress={() => func('heartRate', { current: paciente?.heartRate?.current })}>
-                <Feather name="plus" size={16} color="#36A06F" />
-              </TouchableOpacity>
+              <Text style={styles.sectionTitle}>Ritmo cardíaco e pressão</Text>
+              {vitals.length > 1 && (
+                <TouchableOpacity onPress={() => setShowVitals((v) => !v)}>
+                  <Feather name={showVitals ? 'minus' : 'plus'} size={16} color="#36A06F" />
+                </TouchableOpacity>
+              )}
             </View>
-            <View style={styles.bpmRow}>
-              {/*mudar para um historico de bpm e pressão sanguinea*/}
-              <Text style={styles.bpmValue}>{paciente?.heartRate?.current}</Text>
-              <Text style={styles.bpmUnit}>bpm</Text>
-            </View>
-          </View>{paciente.heartRate.history.length >0 &&
-          <View style={styles.chartWrapper}>
-            <Text style={styles.chartTitle}>Última{paciente.heartRate.history.length > 1? 's' :''}{paciente.heartRate.history.slice(-4).length > 1? ` ${paciente.heartRate.history.slice(-4).length}` : ''} marca{paciente.heartRate.history.length > 1? 'ções' :'ção'}:</Text>
-            {paciente?.heartRate?.history && <HeartRateChart history={paciente.heartRate.history.slice(-4)} />}
-          </View>}
+
+            {latestVital ? (
+              <>
+                <View style={styles.bpmRow}>
+                  <Text style={styles.bpmValue}>{latestVital.bpm ?? '—'}</Text>
+                  <Text style={styles.bpmUnit}>bpm</Text>
+                </View>
+                <Text style={styles.vitalPressure}>Pressão: {latestVital.pressure || '—'}</Text>
+                <Text style={styles.vitalDate}>
+                  {latestVital.date} às {latestVital.hour}
+                </Text>
+              </>
+            ) : (
+              <Text style={styles.emptySectionText}>
+                Nenhum registro de ritmo cardíaco ou pressão sanguínea
+              </Text>
+            )}
+          </View>
         </View>
+
+        {showVitals && vitals.length > 1 && (
+          <View style={styles.historyList}>
+            {vitals.map((v) => (
+              <View key={v.id} style={styles.historyRow}>
+                <Text style={styles.historyDate}>
+                  {v.date} · {v.hour}
+                </Text>
+                <Text style={styles.historyValue}>
+                  {v.bpm != null ? `${v.bpm} bpm` : '—'}  ·  {v.pressure || '—'}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
 
       <View style={[styles.card, styles.statsCard]}>
@@ -249,16 +246,38 @@ export default function Info({ paciente, func }) {
         <View style={styles.statColumn}>
           <View style={styles.labelWithEdit}>
             <Text style={styles.sectionTitle}>Peso</Text>
-            
-            {/*fazer isso mostrar a lista completa, não adicionar algo*/}
-            <TouchableOpacity onPress={() => func('weight', { weight: paciente?.weight })}>
-              <Feather name="plus" size={16} color="#36A06F" />
-            </TouchableOpacity>
+            {weights.length > 1 && (
+              <TouchableOpacity onPress={() => setShowWeights((v) => !v)}>
+                <Feather name={showWeights ? 'minus' : 'plus'} size={16} color="#36A06F" />
+              </TouchableOpacity>
+            )}
           </View>
-          {/*mudar para um historico de peso*/}
-          <Text style={styles.statValue}>{paciente?.weight}</Text>
+          {latestWeight ? (
+            <>
+              <Text style={styles.statValue}>{latestWeight.value}</Text>
+              <Text style={styles.vitalDate}>{latestWeight.date}</Text>
+            </>
+          ) : (
+            <Text style={[styles.emptySectionText, { textAlign: 'center' }]}>
+              Nenhum peso registrado
+            </Text>
+          )}
         </View>
       </View>
+
+      {showWeights && weights.length > 1 && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Histórico de peso</Text>
+          {weights.map((w) => (
+            <View key={w.id} style={styles.historyRow}>
+              <Text style={styles.historyDate}>
+                {w.date} · {w.hour}
+              </Text>
+              <Text style={styles.historyValue}>{w.value}</Text>
+            </View>
+          ))}
+        </View>
+      )}
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Laudos</Text>
@@ -420,23 +439,36 @@ const styles = StyleSheet.create({
     color: '#4D4D4D',
     marginBottom: 5,
   },
-  chartWrapper: {
-    alignItems: 'center',
-  },
-  chartTitle: {
-    fontSize: 12,
-    fontWeight: 'bold',
+  vitalPressure: {
+    fontSize: 15,
     color: '#1A1A1A',
-    marginBottom: 4,
+    marginTop: 2,
   },
-  chartLabels: {
+  vitalDate: {
+    fontSize: 12,
+    color: '#808080',
+    marginTop: 2,
+  },
+  historyList: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#EFEFEF',
+  },
+  historyRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 4,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EFEFEF',
   },
-  chartLabelText: {
-    fontSize: 12,
-    fontWeight: 'bold',
+  historyDate: {
+    fontSize: 13,
+    color: '#808080',
+  },
+  historyValue: {
+    fontSize: 14,
+    fontWeight: '600',
     color: '#1A1A1A',
   },
   statsCard: {

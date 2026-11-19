@@ -117,3 +117,12 @@ export function validarCodigo(value) {
 export function validarCampos(resultados) {
   return Object.fromEntries(Object.entries(resultados).filter(([, msg]) => msg));
 }
+
+export const validarPressao = (v) =>
+  !v || /^\d{2,3}\/\d{2,3}$/.test(String(v).trim())
+    ? null
+    : 'Informe a pressão no formato 120/80.';
+    export const validarTipoSanguineo = (v) =>
+  /^(A|B|AB|O)[+-]$/.test(String(v ?? '').trim().toUpperCase())
+    ? null
+    : 'Informe um tipo sanguíneo válido (ex.: O+, AB-).';

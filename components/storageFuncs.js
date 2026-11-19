@@ -2,6 +2,7 @@ import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabaseClient';
 import {
+  validarTipoSanguineo,
   limparTexto,
   validarNome,
   validarEmail,
@@ -11,6 +12,7 @@ import {
   validarBpm,
   validarPeso,
   validarCodigo,
+  validarPressao,
 } from './validacao';
 
 /*
@@ -31,6 +33,12 @@ import {
      por dbIdDoPaciente() e nunca sai deste arquivo.
    - listas (medicamentos, laudos, tarefas, ...), produtos e estoque: uuid
    - foto: data URI base64 ('data:image/jpeg;base64,...')
+
+  Check-in: o formulário envia tudo junto (registrarCheckIn), mas cada dado
+  vai para a sua tabela:
+   - checkins:   sentimento, sono, humor, notas (data = sempre o dia de hoje)
+   - batimentos: bpm + pressão
+   - pesos:      peso (e Pacientes.Peso guarda o peso atual)
 
   [SEGURANÇA] Mudanças desta versão (procure por "[SEGURANÇA]"):
    1. Mensagens de erro genéricas (sem vazar mensagem do Supabase/banco).
@@ -86,6 +94,11 @@ const clean = (row) =>
   Object.fromEntries(Object.entries(row).filter(([, v]) => v !== undefined));
 
 const formatHour = (date) => `${date.getHours()}:${pad(date.getMinutes())}`;
+
+// Data local (dd/mm/aaaa). Usa o fuso do aparelho: o medido_em do banco vem
+// em UTC, então ler a data do texto dele podia cair no dia errado.
+const formatDateBr = (date) =>
+  `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
 
 function todayIso() {
   const d = new Date();
@@ -368,6 +381,7 @@ const PACIENTES_SELECT = `
     relatorios (*),
     checkins (*),
     batimentos (*),
+    pesos (*),
     dietas (*),
     dieta_registros (*)
   )
@@ -384,10 +398,36 @@ function mapPaciente(p) {
   const batimentos = [...(p.batimentos ?? [])].sort(
     (a, b) => new Date(a.medido_em) - new Date(b.medido_em)
   );
-  const history = batimentos.slice(-12).map((b) => ({
-    hour: formatHour(new Date(b.medido_em)),
-    bpm: b.bpm,
-  }));
+
+  // gráfico: só medições que têm bpm
+  const history = batimentos
+    .filter((b) => b.bpm != null)
+    .slice(-12)
+    .map((b) => ({ hour: formatHour(new Date(b.medido_em)), bpm: b.bpm }));
+
+  // histórico de bpm + pressão (mais recente primeiro)
+  const vitals = [...batimentos]
+    .reverse()
+    .slice(0, 50)
+    .map((b) => {
+      const d = new Date(b.medido_em);
+      return {
+        id: b.id,
+        date: formatDateBr(d),
+        hour: formatHour(d),
+        bpm: b.bpm,
+        pressure: b.pressao ?? '',
+      };
+    });
+
+  // histórico de peso (mais recente primeiro)
+  const weightHistory = [...(p.pesos ?? [])]
+    .sort((a, b) => new Date(b.medido_em) - new Date(a.medido_em))
+    .slice(0, 50)
+    .map((w) => {
+      const d = new Date(w.medido_em);
+      return { id: w.id, date: formatDateBr(d), hour: formatHour(d), value: `${w.peso} kg` };
+    });
 
   const diet =
     dieta || allergies.length
@@ -414,6 +454,8 @@ function mapPaciente(p) {
     conditions: p.Condicoes_Cronicas ?? [],
     bloodType: p.Tipo_Sanguineo ?? '',
     weight: p.Peso != null ? `${p.Peso} kg` : '',
+    weightHistory,
+    vitals,
     heartRate: {
       current: history.length ? history[history.length - 1].bpm : 0,
       history,
@@ -444,14 +486,27 @@ export async function fetchPacientes(userId) {
 }
 
 // output: { name, age ('dd/mm/aaaa'), conditions, restrictions, bloodType, foto }
+// Obrigatórios: nome, data de nascimento e tipo sanguíneo.
 export async function criarPaciente(output) {
   const nome = limparTexto(output.name, 100);
-  const erro = validarNome(nome) || validarDataBr(output.age);
+  const dataTxt = String(output.age ?? '').trim();
+  const tipo = limparTexto(output.bloodType, 10).toUpperCase();
+
+  const erro =
+    validarNome(nome) ||
+    (nome.length < 3 ? 'Informe o nome completo do paciente.' : null) ||
+    (!dataTxt ? 'Informe a data de nascimento.' : validarDataBr(dataTxt)) ||
+    (!tipo ? 'Informe o tipo sanguíneo.' : validarTipoSanguineo(tipo));
   if (erro) {
     Alert.alert('Atenção', erro);
     return null;
   }
-  const nascimento = output.age ? toIsoDate(output.age) : null;
+
+  const nascimento = toIsoDate(dataTxt);
+  if (!nascimento || nascimento > todayIso()) {
+    Alert.alert('Atenção', 'Data de nascimento inválida.');
+    return null;
+  }
 
   const foto = fotoDataUri(output.foto);
   if (foto && foto.length > MAX_FOTO_CHARS) {
@@ -464,7 +519,7 @@ export async function criarPaciente(output) {
     p_nascimento: nascimento,
     p_condicoes: toArray(output.conditions),
     p_restricoes: toArray(output.restrictions),
-    p_tipo_sanguineo: limparTexto(output.bloodType, 10) || null,
+    p_tipo_sanguineo: tipo,
     p_foto: foto,
   });
 
@@ -533,6 +588,7 @@ export async function conectarPaciente(codigo) {
   return { success: true, id: String(codigo).trim().toUpperCase() };
 }
 
+// Grava no histórico (tabela pesos) e mantém Pacientes.Peso como peso atual.
 export async function salvarPeso(id, weight) {
   const erro = validarPeso(weight);
   if (erro) {
@@ -540,6 +596,15 @@ export async function salvarPeso(id, weight) {
     return null;
   }
   const peso = toNumberOrNull(weight);
+
+  const dbId = await dbIdDoPaciente(id);
+  if (!dbId) return null;
+
+  const { error: histError } = await supabase
+    .from('pesos')
+    .insert({ id_paciente_fk: dbId, peso });
+  if (histError) return fail('Erro ao salvar peso', histError);
+
   const { data, error } = await supabase
     .from('Pacientes')
     .update({ Peso: peso })
@@ -551,8 +616,16 @@ export async function salvarPeso(id, weight) {
   return `${data.Peso} kg`;
 }
 
-export async function registrarBatimento(id, bpm) {
-  const erro = validarBpm(bpm);
+// bpm e pressão ficam juntos na tabela batimentos (qualquer um dos dois é opcional).
+export async function registrarBatimento(id, bpm, pressao) {
+  const temBpm = String(bpm ?? '').trim() !== '';
+  const temPressao = String(pressao ?? '').trim() !== '';
+
+  if (!temBpm && !temPressao) {
+    Alert.alert('Atenção', 'Informe o bpm ou a pressão.');
+    return null;
+  }
+  const erro = (temBpm ? validarBpm(bpm) : null) || validarPressao(pressao);
   if (erro) {
     Alert.alert('Atenção', erro);
     return null;
@@ -563,12 +636,54 @@ export async function registrarBatimento(id, bpm) {
 
   const { data, error } = await supabase
     .from('batimentos')
-    .insert({ id_paciente_fk: dbId, bpm: Number(bpm) })
+    .insert({
+      id_paciente_fk: dbId,
+      bpm: temBpm ? Number(bpm) : null,
+      pressao: temPressao ? String(pressao).trim() : null,
+    })
     .select()
     .single();
 
   if (error) return fail('Erro ao registrar batimentos', error);
-  return { hour: formatHour(new Date(data.medido_em)), bpm: data.bpm };
+  return { hour: formatHour(new Date(data.medido_em)), bpm: data.bpm, pressao: data.pressao };
+}
+
+// ---- Check-in ----
+// output: { feeling, sleep, moodChange, notes, bloodPressure, heartRate, weight }
+// - A data do check-in é sempre o dia de hoje (não vem do formulário).
+// - Em check-in novo, bpm/pressão vão para `batimentos` e o peso para `pesos`.
+// - Ao editar, só os campos de texto mudam (data e medidas ficam como estão).
+export async function registrarCheckIn(pacienteId, output, existingId = null) {
+  const temBpm = String(output.heartRate ?? '').trim() !== '';
+  const temPressao = String(output.bloodPressure ?? '').trim() !== '';
+  const temPeso = String(output.weight ?? '').trim() !== '';
+
+  // valida tudo antes de gravar qualquer coisa
+  const erro =
+    (temBpm ? validarBpm(output.heartRate) : null) ||
+    validarPressao(output.bloodPressure) ||
+    (temPeso ? validarPeso(output.weight) : null);
+  if (erro) {
+    Alert.alert('Atenção', erro);
+    return null;
+  }
+
+  const entry = existingId
+    ? { ...output, date: undefined } // edição: não altera a data
+    : { ...output, date: todayIso() }; // novo: sempre hoje
+
+  const checkin = await saveListItem('checkins', pacienteId, entry, existingId);
+  if (!checkin) return null;
+
+  if (!existingId) {
+    if (temBpm || temPressao) {
+      await registrarBatimento(pacienteId, output.heartRate, output.bloodPressure);
+    }
+    if (temPeso) {
+      await salvarPeso(pacienteId, output.weight);
+    }
+  }
+  return checkin;
 }
 
 // ---- Listas do paciente ----
@@ -673,7 +788,13 @@ const LISTS = {
 export async function saveListItem(field, pacienteId, entry, existingId = null) {
   const cfg = LISTS[field];
   if (!cfg) return fail(`Lista inválida (${field})`, { message: 'Lista inválida' });
-
+  if (field === 'laudos') {
+  const erro = validarLaudo(entry);
+  if (erro) {
+    Alert.alert('Atenção', erro);
+    return null;
+  }
+}
   const row = clean(cfg.toRow(entry));
   if (row.foto_path === false) return null; // foto grande demais
 
@@ -919,7 +1040,13 @@ export async function removerMedicamento(id) {
   if (error) return fail('Erro ao remover medicamento', error);
   return true;
 }
-
+function validarLaudo(e) {
+  if (limparTexto(e.name, 150).length < 2) return 'Informe o nome do laudo.';
+  if (limparTexto(e.doctor, 100).length < 3) return 'Informe o nome do médico.';
+  if (!e.date) return 'Escolha a data do laudo.';
+  if (!e.file) return 'Anexe o arquivo do laudo (PDF ou imagem).';
+  return validarDataBr(e.date);
+}
 // ---- Constantes ----
 export const userImg =
   'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQQchi5sg7mUmbWbRUeVh1Mus0NYioqXle1nMqVk5dcUQ&s=10';

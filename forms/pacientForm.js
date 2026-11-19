@@ -25,6 +25,7 @@ export default function PacientF({ style, closeForm, useOutput, initialData }) {
   const [doencas, setDoencas] = useState(toCommaList(initialData?.conditions));
   const [alergias, setAlergias] = useState(toCommaList(initialData?.restrictions));
   const [foto, setFoto] = useState(initialData?.foto ?? '');
+const [bloodType, setBloodType] = useState(initialData?.bloodType ?? '');
 
   const pickPhoto = async () => {
     const uri = await pickImageFromLibrary();
@@ -37,6 +38,7 @@ export default function PacientF({ style, closeForm, useOutput, initialData }) {
       age: birthDate,
       conditions: doencas,
       restrictions: alergias,
+       bloodType: bloodType,
       foto: foto ,
     };
 
@@ -92,19 +94,19 @@ export default function PacientF({ style, closeForm, useOutput, initialData }) {
             />
           </View>
           <View style={styles.item}>
-            {/*adicionar funcionalidade */}
-            <Text>Tipo sanguíneo</Text>
-            <TextInput
-              keyboardType="text"
-              style={styles.input}
-              placeholder=""
-              placeholderTextColor="#B3B3B3"
-              value={}
-              onChangeText={(text) => {
-              }}
-              autoComplete="none"
-            />
-          </View>
+  <Text>Tipo sanguíneo</Text>
+  <TextInput
+    keyboardType="default"
+    style={styles.input}
+    placeholder="Ex.: O+, AB-"
+    placeholderTextColor="#B3B3B3"
+    value={bloodType}
+    onChangeText={setBloodType}
+    autoCapitalize="characters"
+    maxLength={3}
+    autoComplete="none"
+  />
+</View>
           <View style={styles.item}>
             <DateField
               value={birthDate}

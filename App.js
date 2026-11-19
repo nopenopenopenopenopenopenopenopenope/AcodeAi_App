@@ -5,14 +5,8 @@
 LISTA DE MUDANÇAS / A FAZER / TESTES:
 
 Testar:
-  tela de cadastro:
-    ver se a logo está com o tamanho correto
-    verificar as proporções do elemento de termos de uso
-    ver se está bom o lugar novo dos erros
   tela de estoque: 
     ver se funciona criar o estoque agr, pq n sei se a mudança funciona mesmo
-  Navegação:
-    verificar se o novo estilo funciona
 
 Corrigir:
   tela de inicio:
@@ -62,13 +56,14 @@ import {
 } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import {
-  logoutUsuario,
+    logoutUsuario,
   userImg,
   fetchPacientes,
   criarPaciente,
   atualizarPaciente,
   salvarPeso,
   registrarBatimento,
+  registrarCheckIn,
   conectarPaciente,
   saveListItem,
   setTarefaConcluida,
@@ -335,19 +330,24 @@ export default function App() {
       notes: output.notes,
     });
 
-  const saveCheckin = (output) =>
-    upsertPacientListItem('checkins', {
-      feeling: output.feeling,
-      sleep: output.sleep,
-      moodChange: output.moodChange,
-      notes: output.notes,
-      date: output.date || todayBR(),
-    });
+  const saveCheckin = async (output) => {
+  const pacienteId = requireSelectedPacient();
+  if (!pacienteId) return;
+
+  // grava o check-in (sempre com a data de hoje) e, se for novo, também
+  // bpm + pressão (batimentos) e peso (pesos)
+  const saved = await registrarCheckIn(pacienteId, output, formData?.id ?? null);
+  if (!saved) return;
+
+  // recarrega: vitals e weightHistory só são montados no fetchPacientes
+  await loadPacientes(profile.id);
+  closeForm();
+};
 
   const saveLaudo = (output) =>
     upsertPacientListItem('laudos', {
       name: output.name,
-      date: output.date || todayBR(),
+      date: output.date ,
       doctor: output.doctor,
       file: output.file,
     });
