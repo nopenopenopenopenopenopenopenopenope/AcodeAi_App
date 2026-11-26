@@ -15,40 +15,6 @@ import {
   validarPressao,
 } from './validacao';
 
-/*
-  Único arquivo de armazenamento do app: AsyncStorage (usuário logado),
-  autenticação (supabase.auth) e todos os dados no Supabase (pacientes,
-  listas do paciente, dieta, estoque).
-
-  Chaves usadas no AsyncStorage:
-  - 'user': o usuário atualmente logado (perfil + dados de sessão).
-
-  Cadastro e login usam supabase.auth (email/senha). Dados extras
-  (name, phone, foto) ficam no user_metadata do usuário de auth. A foto de
-  perfil começa como a imagem padrão (userImg).
-
-  Ids no app:
-   - paciente: o `codigo` de conexão (texto aleatório e único). O
-     id_paciente (bigint) fica só no banco: aqui dentro ele é traduzido
-     por dbIdDoPaciente() e nunca sai deste arquivo.
-   - listas (medicamentos, laudos, tarefas, ...), produtos e estoque: uuid
-   - foto: data URI base64 ('data:image/jpeg;base64,...')
-
-  Check-in: o formulário envia tudo junto (registrarCheckIn), mas cada dado
-  vai para a sua tabela:
-   - checkins:   sentimento, sono, humor, notas (data = sempre o dia de hoje)
-   - batimentos: bpm + pressão
-   - pesos:      peso (e Pacientes.Peso guarda o peso atual)
-
-  [SEGURANÇA] Mudanças desta versão (procure por "[SEGURANÇA]"):
-   1. Mensagens de erro genéricas (sem vazar mensagem do Supabase/banco).
-   2. Política de senha + validação de entradas no cadastro.
-   3. Consentimento (aceite dos termos) registrado no cadastro.
-   4. Tipos de imagem permitidos (jpeg/png/webp) — SVG e outros são recusados.
-   5. Logs de erro detalhados só em desenvolvimento (__DEV__).
-*/
-
-// ---- Helpers ----
 
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -95,8 +61,6 @@ const clean = (row) =>
 
 const formatHour = (date) => `${date.getHours()}:${pad(date.getMinutes())}`;
 
-// Data local (dd/mm/aaaa). Usa o fuso do aparelho: o medido_em do banco vem
-// em UTC, então ler a data do texto dele podia cair no dia errado.
 const formatDateBr = (date) =>
   `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
 
@@ -105,15 +69,12 @@ function todayIso() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-// [SEGURANÇA] O detalhe técnico do erro (nome de tabela, constraint, etc.)
-// só vai para o log em desenvolvimento. O usuário vê uma mensagem genérica.
 function fail(context, error) {
   if (__DEV__) console.error(context, error);
   Alert.alert('Erro', 'Não foi possível concluir a operação. Tente novamente.');
   return null;
 }
 
-// ---- Código do paciente <-> id_paciente (bigint) ----
 const pacienteDbIds = new Map();
 
 async function dbIdDoPaciente(codigo) {
@@ -136,11 +97,8 @@ async function dbIdDoPaciente(codigo) {
   return data.id_paciente;
 }
 
-// ---- Foto (base64) ----
-const MAX_FOTO_CHARS = 500000; // ~370 KB de imagem; criar_paciente usa o mesmo limite
+const MAX_FOTO_CHARS = 500000; 
 
-// [SEGURANÇA] Só aceita data URI de imagem raster permitida (sem SVG, que
-// pode conter script). Qualquer outra coisa é ignorada.
 const TIPOS_IMAGEM_OK = ['image/jpeg', 'image/png', 'image/webp'];
 
 function fotoDataUri(value) {
@@ -159,14 +117,12 @@ function fotoParaBanco(value) {
   return foto;
 }
 
-// ---- Laudos (arquivo no Supabase Storage) ----
 const LAUDOS_BUCKET = 'laudos';
 const TIPOS_LAUDO_OK = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png' };
-const MAX_LAUDO_BYTES = 10 * 1024 * 1024; // 10 MB (mesmo limite do bucket)
+const MAX_LAUDO_BYTES = 10 * 1024 * 1024; 
 
 const isLocalUri = (v) => typeof v === 'string' && /^(file|content):\/\//i.test(v);
 
-// Nome, médico, data e arquivo são obrigatórios.
 function validarLaudo(e) {
   if (limparTexto(e.name, 150).length < 2) return 'Informe o nome do laudo.';
   if (limparTexto(e.doctor, 100).length < 3) return 'Informe o nome do médico.';
@@ -175,10 +131,6 @@ function validarLaudo(e) {
   return validarDataBr(e.date);
 }
 
-// Envia o arquivo escolhido (uri local) para o bucket e devolve o caminho
-// dentro dele ("<codigo do paciente>/<arquivo>"). É esse caminho que fica em
-// laudos.arquivo_path; quem pode ler/enviar é decidido pelas policies do
-// storage (usuário conectado ao paciente).
 async function enviarLaudo(pacienteId, entry) {
   const ext = TIPOS_LAUDO_OK[entry.fileType];
   if (!ext) {
@@ -207,11 +159,9 @@ async function enviarLaudo(pacienteId, entry) {
   }
 }
 
-// Gera um link temporário (5 min) para abrir o arquivo do laudo.
 export async function urlDoLaudo(path) {
   if (/^https?:\/\//i.test(path ?? '')) return path;
 
-  // laudos antigos guardavam o caminho local do celular de quem enviou
   if (!path || isLocalUri(path)) {
     Alert.alert(
       'Atenção',
@@ -230,7 +180,6 @@ export async function urlDoLaudo(path) {
   return data.signedUrl;
 }
 
-// ---- Exclusão de conta / recuperação de senha ----
 export async function apagarUsuario() {
   try {
     const { data, error } = await supabase.functions.invoke('smart-action');
@@ -249,8 +198,6 @@ export async function apagarUsuario() {
   }
 }
 
-// [SEGURANÇA] Resposta sempre igual, exista o e-mail ou não (evita
-// enumeração de usuários).
 export async function sendRecoveryCode(email) {
   const erroEmail = validarEmail(email);
   if (erroEmail) {
@@ -268,7 +215,7 @@ export async function sendRecoveryCode(email) {
   return true;
 }
 
-// ---- Usuário logado ('user') ----
+
 
 export async function getStoredUser() {
   try {
@@ -289,10 +236,6 @@ export async function clearStoredUser() {
   await AsyncStorage.removeItem('user');
 }
 
-// ---- Cadastro ----
-// novoUsuario: { name, email, phone, pword, aceitouTermos }
-// [SEGURANÇA] Valida entradas, exige o aceite dos termos e registra a data
-// do consentimento no user_metadata.
 export async function registrarUsuario(novoUsuario) {
   const { email, pword, aceitouTermos } = novoUsuario;
   const name = limparTexto(novoUsuario.name, 100);
@@ -350,9 +293,6 @@ export async function registrarUsuario(novoUsuario) {
   return usuarioComId;
 }
 
-// ---- Login ----
-// [SEGURANÇA] Mensagem genérica: não diz se o e-mail existe ou se a senha
-// está errada.
 export async function loginUsuario(email, pword) {
   if (!email || !pword) {
     Alert.alert('Atenção', 'Informe e-mail e senha.');
@@ -385,8 +325,6 @@ export async function loginUsuario(email, pword) {
   return usuario;
 }
 
-// ---- Atualizar nome e foto do usuário ----
-
 export async function atualizarUsuario({ name, foto }) {
   try {
     const usuarioAtual = await getStoredUser();
@@ -403,9 +341,7 @@ export async function atualizarUsuario({ name, foto }) {
         return null;
       }
     }
-
-    // [SEGURANÇA] foto nova só se for data URI permitido e de tamanho aceitável;
-    // caso contrário mantém a atual.
+    
     const fotoNova = foto != null ? fotoParaBanco(foto) : undefined;
     if (fotoNova === false) return null;
 
@@ -433,14 +369,13 @@ export async function atualizarUsuario({ name, foto }) {
   }
 }
 
-// ---- Logout ----
+
 export async function logoutUsuario() {
   await clearStoredUser();
   pacienteDbIds.clear();
   await supabase.auth.signOut();
 }
 
-// ---- Pacientes ----
 
 const PACIENTES_SELECT = `
   id_paciente_fk,
@@ -473,13 +408,11 @@ function mapPaciente(p) {
     (a, b) => new Date(a.medido_em) - new Date(b.medido_em)
   );
 
-  // gráfico: só medições que têm bpm
   const history = batimentos
     .filter((b) => b.bpm != null)
     .slice(-12)
     .map((b) => ({ hour: formatHour(new Date(b.medido_em)), bpm: b.bpm }));
 
-  // histórico de bpm + pressão (mais recente primeiro)
   const vitals = [...batimentos]
     .reverse()
     .slice(0, 50)
@@ -494,7 +427,6 @@ function mapPaciente(p) {
       };
     });
 
-  // histórico de peso (mais recente primeiro)
   const weightHistory = [...(p.pesos ?? [])]
     .sort((a, b) => new Date(b.medido_em) - new Date(a.medido_em))
     .slice(0, 50)
@@ -543,8 +475,6 @@ function mapPaciente(p) {
   };
 }
 
-// NOTA: a RLS do banco deve filtrar por auth.uid(); o userId enviado pelo
-// cliente aqui é só um filtro de conveniência e NÃO deve ser confiado.
 export async function fetchPacientes(userId) {
   const { data, error } = await supabase
     .from('usuario_paciente')
@@ -559,8 +489,7 @@ export async function fetchPacientes(userId) {
   return rows.map(mapPaciente);
 }
 
-// output: { name, age ('dd/mm/aaaa'), conditions, restrictions, bloodType, foto }
-// Obrigatórios: nome, data de nascimento e tipo sanguíneo.
+
 export async function criarPaciente(output) {
   const nome = limparTexto(output.name, 100);
   const dataTxt = String(output.age ?? '').trim();
@@ -598,7 +527,7 @@ export async function criarPaciente(output) {
   });
 
   if (error) return fail('Erro ao cadastrar paciente', error);
-  return data; // codigo
+  return data; 
 }
 
 export async function atualizarPaciente(id, output) {
@@ -648,8 +577,7 @@ export async function atualizarPaciente(id, output) {
   return true;
 }
 
-// [SEGURANÇA] Mensagem genérica para código inválido/sem acesso. O banco
-// (RPC) deve limitar tentativas para dificultar adivinhação de códigos.
+
 export async function conectarPaciente(codigo) {
   const erro = validarCodigo(codigo);
   if (erro) return { success: false, error: erro };
@@ -662,7 +590,6 @@ export async function conectarPaciente(codigo) {
   return { success: true, id: String(codigo).trim().toUpperCase() };
 }
 
-// Grava no histórico (tabela pesos) e mantém Pacientes.Peso como peso atual.
 export async function salvarPeso(id, weight) {
   const erro = validarPeso(weight);
   if (erro) {
@@ -690,7 +617,7 @@ export async function salvarPeso(id, weight) {
   return `${data.Peso} kg`;
 }
 
-// bpm e pressão ficam juntos na tabela batimentos (qualquer um dos dois é opcional).
+
 export async function registrarBatimento(id, bpm, pressao) {
   const temBpm = String(bpm ?? '').trim() !== '';
   const temPressao = String(pressao ?? '').trim() !== '';
@@ -722,17 +649,10 @@ export async function registrarBatimento(id, bpm, pressao) {
   return { hour: formatHour(new Date(data.medido_em)), bpm: data.bpm, pressao: data.pressao };
 }
 
-// ---- Check-in ----
-// output: { feeling, sleep, moodChange, notes, bloodPressure, heartRate, weight }
-// - A data do check-in é sempre o dia de hoje (não vem do formulário).
-// - Em check-in novo, bpm/pressão vão para `batimentos` e o peso para `pesos`.
-// - Ao editar, só os campos de texto mudam (data e medidas ficam como estão).
 export async function registrarCheckIn(pacienteId, output, existingId = null) {
   const temBpm = String(output.heartRate ?? '').trim() !== '';
   const temPressao = String(output.bloodPressure ?? '').trim() !== '';
   const temPeso = String(output.weight ?? '').trim() !== '';
-
-  // valida tudo antes de gravar qualquer coisa
   const erro =
     (temBpm ? validarBpm(output.heartRate) : null) ||
     validarPressao(output.bloodPressure) ||
@@ -743,8 +663,8 @@ export async function registrarCheckIn(pacienteId, output, existingId = null) {
   }
 
   const entry = existingId
-    ? { ...output, date: undefined } // edição: não altera a data
-    : { ...output, date: todayIso() }; // novo: sempre hoje
+    ? { ...output, date: undefined } 
+    : { ...output, date: todayIso() }; 
 
   const checkin = await saveListItem('checkins', pacienteId, entry, existingId);
   if (!checkin) return null;
@@ -760,7 +680,6 @@ export async function registrarCheckIn(pacienteId, output, existingId = null) {
   return checkin;
 }
 
-// ---- Listas do paciente ----
 export async function removerRelatorio(id) {
   const { error } = await supabase.from('relatorios').delete().eq('id', id);
   if (error) return fail('Erro ao remover relatório', error);
@@ -774,7 +693,7 @@ const LISTS = {
       nome: limparTexto(e.name, 100),
       inicio: e.start ? toIsoDate(e.start) : undefined,
       tratamento: e.treatment != null ? limparTexto(e.treatment, 300) : undefined,
-      frequencia: e.frequency != null ? limparTexto(e.frequency, 100) : undefined, // horários em texto separado por vírgula
+      frequencia: e.frequency != null ? limparTexto(e.frequency, 100) : undefined, 
       foto_path: fotoParaBanco(e.foto),
     }),
     fromRow: (r) => ({
@@ -877,7 +796,6 @@ export async function saveListItem(field, pacienteId, entry, existingId = null) 
       Alert.alert('Atenção', erro);
       return null;
     }
-    // arquivo novo escolhido no aparelho: sobe para o Storage e guarda só o caminho
     if (isLocalUri(entry.file)) {
       const path = await enviarLaudo(pacienteId, entry);
       if (!path) return null;
@@ -886,7 +804,7 @@ export async function saveListItem(field, pacienteId, entry, existingId = null) 
   }
 
   const row = clean(cfg.toRow(entry));
-  if (row.foto_path === false) return null; // foto grande demais
+  if (row.foto_path === false) return null;
 
   let query;
   if (existingId) {
@@ -907,8 +825,6 @@ export async function setTarefaConcluida(id, concluida) {
   if (error) return fail('Erro ao atualizar tarefa', error);
   return true;
 }
-
-// ---- Dieta ----
 
 export async function salvarMetasDieta(pacienteId, metas) {
   const campos = {
@@ -1021,7 +937,6 @@ export async function salvarRestricoesDieta(pacienteId, { allergies, intolerance
   return true;
 }
 
-// ---- Estoque ----
 
 const mapProduto = (r) => ({
   id: r.id,
@@ -1082,7 +997,7 @@ export async function criarEstoque() {
     p_nome: numeroAleatorio,
   });
   if (error) return fail('Erro ao criar estoque', error);
-  return data; // uuid
+  return data; 
 }
 
 export async function conectarEstoque(codigo) {
@@ -1096,8 +1011,6 @@ export async function conectarEstoque(codigo) {
   }
   return { success: true, id: data };
 }
-
-// ---- Desconectar / remover (RPCs) ----
 
 export async function desconectarPaciente(codigo) {
   const { error } = await supabase.rpc('desconectar_paciente', { p_codigo: codigo });
@@ -1131,11 +1044,8 @@ export async function removerMedicamento(id) {
   return true;
 }
 
-// ---- Constantes ----
 export const userImg =
   'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQQchi5sg7mUmbWbRUeVh1Mus0NYioqXle1nMqVk5dcUQ&s=10';
-
-// ---- Conexões do paciente (admin) ----
 
 export async function buscarConexoesPaciente(codigo) {
   if (!codigo) return [];
@@ -1169,8 +1079,6 @@ export async function removerConexaoPaciente(codigo, alvoUsuarioId) {
 
   return true;
 }
-
-// ---- Doses de medicamento ----
 
 export async function marcarDoseMedicamento(medicamentoId, data, horario, consumido) {
   if (consumido) {
