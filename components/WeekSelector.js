@@ -2,34 +2,28 @@ import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import DateField, { parseDateBR, formatDateBR } from './DateField';
 
 export default function WeekSelector({ selectedDate, onChangeWeek }) {
-  // Converte a data selecionada (string "dd/mm/aaaa") para objeto Date
   const currentDate = parseDateBR(selectedDate) || new Date();
 
-  // Função para avançar ou recuar dias
   const addDays = (date, days) => {
     const result = new Date(date);
     result.setDate(result.getDate() + days);
     return result;
   };
 
-  // Ir para a semana anterior (-7 dias)
   const handlePrevWeek = () => {
     const newDate = addDays(currentDate, -7);
     onChangeWeek(formatDateBR(newDate));
   };
 
-  // Ir para a próxima semana (+7 dias)
   const handleNextWeek = () => {
     const newDate = addDays(currentDate, 7);
     onChangeWeek(formatDateBR(newDate));
   };
 
-  // Quando o usuário escolhe um dia específico pelo calendário nativo
   const handleDateSelected = (formattedDate) => {
     onChangeWeek(formattedDate);
   };
 
-  // Calcula o início (segunda-feira) e fim (domingo) da semana atual da data selecionada
   const getWeekRange = (date) => {
     const d = new Date(date);
     const day = d.getDay();
@@ -45,12 +39,10 @@ export default function WeekSelector({ selectedDate, onChangeWeek }) {
   return (
     <View style={styles.container}>
       <View style={styles.navRow}>
-        {/* Botão Semana Anterior */}
         <TouchableOpacity style={styles.arrowButton} onPress={handlePrevWeek}>
           <Text style={styles.arrowText}>◀</Text>
         </TouchableOpacity>
 
-        {/* Seletor de Data que exibe o intervalo da semana */}
         <DateField
           value={selectedDate}
           onChange={handleDateSelected}
@@ -58,7 +50,6 @@ export default function WeekSelector({ selectedDate, onChangeWeek }) {
           placeholder="Selecionar dia"
         />
 
-        {/* Botão Próxima Semana */}
         <TouchableOpacity style={styles.arrowButton} onPress={handleNextWeek}>
           <Text style={styles.arrowText}>▶</Text>
         </TouchableOpacity>
