@@ -1,24 +1,3 @@
-/*
-============================================================================================================================================================================================================================================================================================================================================================================================================
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-============================================================================================================================================================================================================================================================================================================================================================================================================
-LISTA DE MUDANÇAS / A FAZER / TESTES:
-
-
-
-Corrigir:
-  menu superior:
-    atualizar imagem de usuario quando atualizar
-  tela de dieta:
-    Remover todas as referencias a essa tela
-  tela de check-in:
-    mostrar o check-in mais detalhado ao clicar nele, como com o report
-============================================================================================================================================================================================================================================================================================================================================================================================================
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-============================================================================================================================================================================================================================================================================================================================================================================================================    
-*/
-
-
 import {
   StyleSheet,
   Text,
@@ -88,22 +67,7 @@ import TopMenu from './components/topMenu';
 import BottomMenu from './components/bottomMenu';
 import { StatusBar } from 'expo-status-bar';
 
-
-/*
-  o que fazer:
-  Concluir a splashscreen
-  Mover o verificador inicial de auth para a splashscreen
-
-  Fonte da verdade agora é o Supabase: pacientes, listas do paciente e
-  estoque são carregados do banco (components/storageFuncs.js) depois do
-  login e, a cada gravação, o estado local só espelha o que o banco devolveu.
-  O `id` do paciente no app é o seu CÓDIGO de conexão — o mesmo que outro
-  usuário digita para se conectar; a tradução para o id_paciente do banco
-  acontece dentro do storageFuncs. Listas, produtos e estoque usam o uuid do
-  banco. Não existe mais generateId.
- */
-
-const PACIENTS_LIMIT = 3; // também imposto no banco (trigger limitar_pacientes)
+const PACIENTS_LIMIT = 3;
 
 const emptyProfile = {
   id: null,
@@ -124,24 +88,13 @@ export default function App() {
   const [form, setForm] = useState('');
   const [formData, setFormData] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-
-  // Handler para a splashscreen (Em Progresso)
   const [splashscreen, setSplashscreen] = useState(true);
-
   const [profile, setProfile] = useState(emptyProfile);
   const [pacient, setPacient] = useState([]);
-
-  // Estoque: um usuário só pode ter um estoque (profile.stockId), mas um
-  // estoque pode ter vários usuários (stock.userIds).
   const [stock, setStock] = useState([]);
 
   const op = useRef(new Animated.Value(0)).current;
-
-  // ---- Carga de dados (banco -> estado) ----
-
-  // Recarrega todos os pacientes do usuário. `preferId` força a seleção
-  // (ex: paciente recém-criado); senão mantém a seleção atual se ainda
-  // existir, ou cai no primeiro da lista.
+  
   const loadPacientes = async (userId, preferId = null) => {
     const list = await fetchPacientes(userId);
     if (!list) return;
@@ -165,8 +118,6 @@ export default function App() {
     setProfile((prev) => ({ ...prev, stockId: list[0]?.id ?? null }));
   };
 
-  // Usa os dados reais do usuário autenticado e carrega pacientes/estoque
-  // dele do banco. Quem não tem nada ainda começa com listas vazias.
   const handleAuthenticated = async (usuario) => {
     if (!usuario?.id) return;
     setProfile({
@@ -184,8 +135,6 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    // espera o 'user' do AsyncStorage ser limpo antes de voltar ao login;
-    // senão o login automático restaura o usuário e logout "não pega"
     try {
       await logoutUsuario();
     } catch (error) {
@@ -196,12 +145,8 @@ export default function App() {
     setPacient([]);
     setStock([]);
   };
-
-  // `data` is optional: pass the existing object being edited (e.g. a
-  // specific medicine, a stock product) so the form opens pre-filled;
-  // omit it (or pass null) to open the form blank, for adding something new.
+  
   const openForm = (formName, data = null) => {
-    // Se o usuário clicou em criar estoque, cria direto sem abrir modal
     if (formName === 'createStock') {
       guarded(createStock)();
       return;
@@ -227,8 +172,6 @@ export default function App() {
     }).start();
   };
 
-  // Evita gravação dupla (toque duplo no botão enquanto a requisição
-  // anterior ainda está em andamento).
   const saving = useRef(false);
   const guarded =
     (fn) =>
@@ -282,10 +225,7 @@ export default function App() {
     })
   );
 });
-
-  // Grava `entry` no banco (insert, ou update se estamos editando — o id
-  // vem de formData) e espelha o item devolvido em pacient[...][field].
-  // Se falhar, o form continua aberto (saveListItem já mostrou o erro).
+  
   const upsertPacientListItem = async (field, entry) => {
     const pacienteId = requireSelectedPacient();
     if (!pacienteId) return;
@@ -308,9 +248,6 @@ export default function App() {
     );
     closeForm();
   };
-
-  // Pra campos que não são listas (weight, ...) — só mescla `patch` no
-  // paciente selecionado.
   const updateSelectedPacient = (patch) => {
     setPacient((prev) =>
       prev.map((p) =>
@@ -330,7 +267,6 @@ export default function App() {
       date: output.date,
       completed: formData?.completed ?? false,
       type: 'event',
-      // só vão se o form de tarefa/evento os preencher; ausentes = não altera
       professional: output.professional,
       place: output.place,
       address: output.address,
@@ -347,13 +283,8 @@ export default function App() {
   const saveCheckin = async (output) => {
   const pacienteId = requireSelectedPacient();
   if (!pacienteId) return;
-
-  // grava o check-in (sempre com a data de hoje) e, se for novo, também
-  // bpm + pressão (batimentos) e peso (pesos)
   const saved = await registrarCheckIn(pacienteId, output, formData?.id ?? null);
   if (!saved) return;
-
-  // recarrega: vitals e weightHistory só são montados no fetchPacientes
   await loadPacientes(profile.id);
   closeForm();
 };
@@ -376,8 +307,6 @@ export default function App() {
       foto: output.foto,
     });
 
-  // Marca/desmarca uma tarefa como concluída (grava no banco).
-  // Ligue isto ao checkbox da tela de agenda via a prop onToggleTask.
   const toggleTask = async (taskId) => {
     const pacienteId = profile.selectedPacient;
     const task = pacient
@@ -439,12 +368,8 @@ export default function App() {
       'Remover'
     );
     if (!ok) return;
-
-    // Chama a função correta do storageFuncs
     const sucesso = await removerRelatorio(id);
     if (!sucesso) return;
-
-    // Atualiza o estado local removendo o relatório apagado
     setPacient((prev) =>
       prev.map((p) =>
         p.id !== pacienteId
@@ -454,9 +379,6 @@ export default function App() {
     );
   };
 
-  // Estoque: um usuário só tem um estoque (profile.stockId), então o
-  // produto sempre é adicionado/editado dentro desse estoque.
-  // Salva cada item da lista como um produto individual no estoque
   const saveStockProduct = async (output) => {
     if (!profile.stockId) {
       Alert.alert('Atenção', 'Conecte-se a um estoque primeiro.');
@@ -478,33 +400,27 @@ export default function App() {
           lastAcquisition: output.lastAcquisition || todayBR(),
           foto: output.foto || null,
         },
-        null // Sempre cria um novo produto para cada linha da lista
+        null 
       );
 
       if (saved) successCount++;
     }
 
     if (successCount > 0) {
-      // Recarrega os estoques para atualizar a tela com os novos produtos individuais
       await loadEstoques(profile.id);
       closeForm();
     } else {
       Alert.alert('Atenção', 'Preencha o nome de pelo menos um produto para salvar.');
     }
   };
-
-  // Cria um estoque novo no banco, vazio, já conectado ao usuário atual.
-  // Cria um estoque novo no banco, vazio, já conectado ao usuário atual.
+  
   const createStock = async () => {
     const id = await criarEstoque();
     if (!id) return;
     await loadEstoques(profile.id);
-    closeForm(); // Fecha o formulário/modal caso estivesse aberto
+    closeForm();
   };
-
-  // Conecta o usuário atual a um estoque existente pelo CÓDIGO dele
-  // (estoque.codigo). NÃO fecha o form sozinho — ConnectStockF decide com
-  // base no { success, error }. Agora é async: o form precisa dar `await`.
+  
   const connectToStock = async (output) => {
     const code = String(output?.stockId ?? '').trim();
     if (!code) return { success: false, error: 'Informe o código do estoque' };
@@ -516,9 +432,6 @@ export default function App() {
     return { success: true };
   };
 
-  // Conecta o usuário atual a um paciente existente pelo CÓDIGO de convite
-  // (Pacientes.codigo) — o campo do form continua se chamando pacientId.
-  // Assim como connectToStock, NÃO fecha o form sozinho e é async.
   const connectToPacient = async (output) => {
     const code = String(output?.pacientId ?? '').trim();
     if (!code) return { success: false, error: 'Informe o código do paciente' };
@@ -538,10 +451,6 @@ export default function App() {
     return { success: true };
   };
 
-  // Cria (RPC criar_paciente) ou edita (update) no banco e recarrega os
-  // pacientes, de modo que o id do app é sempre o id_paciente do banco.
-  // PacientF só coleta uma lista de "restrições alimentares" (alergias):
-  // ela vai para Pacientes.Restricoes_Alimentares.
   const savePacient = async (output) => {
     if (!output?.name?.trim()) {
       Alert.alert('Atenção', 'Informe o nome do paciente.');
@@ -559,8 +468,7 @@ export default function App() {
       }
       const novoId = await criarPaciente(output);
       if (!novoId) return;
-      // mantém a seleção atual; se não havia nenhuma, seleciona o novo
-      await loadPacientes(profile.id, profile.selectedPacient ?? novoId);
+      await loadPacientes(profile.id, profile.selectedPacient ?? novoId); 
     }
     closeForm();
   };
@@ -573,8 +481,6 @@ export default function App() {
     updateSelectedPacient({ weight });
   };
 
-  // Registra a leitura de bpm no banco (batimentos) e acrescenta ao
-  // histórico do paciente selecionado.
   const saveHeartRate = async (output) => {
     const bpm = Number(output.current);
     if (!Number.isFinite(bpm) || bpm <= 0) {
@@ -623,8 +529,7 @@ export default function App() {
 
   closeForm();
 };
-  // Grava a seção da dieta que o DietF abriu (output.section) e recarrega
-  // os pacientes, para o `diet` da tela vir sempre recalculado do banco.
+
   const saveDiet = async (output) => {
     const pacienteId = requireSelectedPacient();
     if (!pacienteId) return;
@@ -640,7 +545,6 @@ export default function App() {
         lipids: output.lipids,
       });
     } else if (output.section === 'water') {
-      // meta e/ou água consumida agora; os dois campos são opcionais
       ok = true;
       if (filled(output.water)) {
         ok = await salvarMetasDieta(pacienteId, { water: output.water });
@@ -666,11 +570,7 @@ export default function App() {
     await loadPacientes(profile.id);
     closeForm();
   };
-
-  // ---- Desconectar / remover paciente, estoque e medicamento ----
-  // Alert.alert com botões não faz nada no web (react-native-web), então lá
-  // usa window.confirm. A confirmação roda FORA do `guarded`, senão o lock
-  // de salvar ficaria preso enquanto o diálogo está aberto.
+  
   const confirmar = (titulo, mensagem, textoOk) => {
     if (Platform.OS === 'web') {
       return Promise.resolve(window.confirm(`${titulo}\n\n${mensagem}`));
