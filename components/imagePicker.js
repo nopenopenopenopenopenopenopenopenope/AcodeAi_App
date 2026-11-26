@@ -1,16 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
 
-/*
-  Abre a galeria de fotos do dispositivo e devolve a imagem escolhida como
-  data URI base64 ('data:image/jpeg;base64,...'), que é o formato gravado
-  nas colunas foto_path (text) do banco — ou null se o usuário cancelar, ou a
-  permissão de acesso à galeria for negada. Os forms usam esse null pra saber
-  que não devem sobrescrever o que já estava lá (foto atual, se estiver
-  editando; nada, se for novo).
-
-  Qualidade baixa + recorte quadrado para a string caber no limite de
-  tamanho (MAX_FOTO_CHARS em storageFuncs.js).
-*/
 export async function pickImageFromLibrary() {
   const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (status !== 'granted') {
