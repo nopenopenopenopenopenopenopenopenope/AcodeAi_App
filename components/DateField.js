@@ -16,14 +16,6 @@ export const parseDateBR = (str) => {
   return new Date(year, month - 1, day);
 };
 
-/*
-  Botão que abre o seletor de data/hora nativo do dispositivo e guarda o
-  valor escolhido já formatado (dd/mm/aaaa para mode="date", "Hh MM" para
-  mode="time"). Só chama onChange quando o usuário efetivamente confirma
-  uma escolha — cancelar deixa o valor (e o formOutput) como estavam, para
-  que o form possa cair no valor de hoje/agora só se o usuário não
-  escolher nada.
-*/
 export default function DateField({ value, onChange, mode = 'date', placeholder }) {
   const [showPicker, setShowPicker] = useState(false);
 
