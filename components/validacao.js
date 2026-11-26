@@ -1,22 +1,3 @@
-/*
-  Validação de entradas (front-end).
-
-  IMPORTANTE: isto NÃO é a proteção de segurança. Serve para:
-   - dar feedback rápido ao usuário (campo certo, mensagem clara);
-   - evitar requisições inúteis ao servidor;
-   - normalizar o texto (trim, espaços, caracteres de controle).
-  A garantia real de integridade/segurança está no banco: RLS (USING e
-  WITH CHECK), constraints (CHECK, NOT NULL, FK) e consultas
-  parametrizadas do SDK do Supabase.
-
-  Todas as funções de validação devolvem:
-   - null          -> válido
-   - string        -> mensagem de erro para mostrar ao usuário
-*/
-
-// ---- Sanitização / normalização ----
-
-// Remove caracteres de controle, colapsa espaços e limita o tamanho.
 export function limparTexto(value, max = 200) {
   return String(value ?? '')
     .replace(/[\u0000-\u001F\u007F]/g, ' ')
@@ -26,8 +7,6 @@ export function limparTexto(value, max = 200) {
 }
 
 export const apenasDigitos = (value) => String(value ?? '').replace(/\D/g, '');
-
-// ---- Conta ----
 
 export function validarNome(value) {
   const nome = limparTexto(value, 100);
@@ -44,7 +23,6 @@ export function validarEmail(value) {
   return null;
 }
 
-// DDD + número: 10 ou 11 dígitos (com ou sem +55).
 export function validarTelefone(value) {
   let d = apenasDigitos(value);
   if (d.startsWith('55') && d.length > 11) d = d.slice(2);
@@ -52,7 +30,6 @@ export function validarTelefone(value) {
   return null;
 }
 
-// Mínimo 8, com maiúscula, minúscula e número (igual à política do painel do Supabase).
 export function validarSenha(value) {
   const s = String(value ?? '');
   if (s.length < 8) return 'A senha deve ter no mínimo 8 caracteres.';
@@ -63,9 +40,6 @@ export function validarSenha(value) {
   return null;
 }
 
-// ---- Dados do paciente ----
-
-// 'dd/mm/aaaa', data real, não futura, a partir de 1900.
 export function validarDataBr(value, { obrigatoria = false } = {}) {
   const v = String(value ?? '').trim();
   if (!v) return obrigatoria ? 'Informe a data (dd/mm/aaaa).' : null;
@@ -98,22 +72,12 @@ export function validarPeso(value) {
   return null;
 }
 
-// Código de convite do paciente/estoque (alfanumérico).
 export function validarCodigo(value) {
   const c = String(value ?? '').trim();
   if (!/^[A-Za-z0-9-]{4,64}$/.test(c)) return 'Código inválido.';
   return null;
 }
 
-// ---- Uso em um formulário ----
-// Roda vários validadores e devolve { campo: mensagem } só com os erros.
-//
-//   const erros = validarCampos({
-//     name:  validarNome(name),
-//     email: validarEmail(email),
-//     pword: validarSenha(pword),
-//   });
-//   if (Object.keys(erros).length) { setErros(erros); return; }
 export function validarCampos(resultados) {
   return Object.fromEntries(Object.entries(resultados).filter(([, msg]) => msg));
 }
